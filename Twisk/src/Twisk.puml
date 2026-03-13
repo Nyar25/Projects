@@ -1,0 +1,198 @@
+@startuml
+
+title Projet twisk
+
+skinparam packageBorderColor yellow
+
+package "twisk"  {
+
+    class ClientTwisk {
+
+    + static Monde fabriqueMonde1()
+    + static void main(String[] args)
+
+    }
+
+    package "Exceptions" {
+
+        class MondeException{
+        }
+
+        class TwiskException {
+        }
+
+    }
+
+    package "outlis"{
+
+        class FabriqueNumero {
+        int cptEtape
+        int cptSemaphore
+        - FabriqueNumero()
+        + static FabriqueNumero getInstance()
+        + int getNumeroEtape()
+        + void reset()
+        + int getNumeroSemaphore()
+        }
+
+        class KitC {
+
+        + Kitc(Monde)
+        + void creerEnvironnement()
+        + void creerFichier(String CodeC)
+        + void construireLaBibliohteque
+        + void compiler()
+        + String faireDefine()
+
+        }
+
+    }
+
+    package "simulation"{
+
+        class Simulation {
+        int nbClients
+        int refresh
+
+        + Simulation()
+        + void simuler(Monde monde)
+        + void setNbClients(int nbClients)
+        + native int[] start_simulation (int nbEtapes, int nbGuichets, int nbClients, int[] tabJetonsGuichet)
+        + native int[] ou_sont_les_clients( int nbEtapes, int nbClients)
+        + native void nettoyage()
+
+
+        }
+
+    }
+
+
+
+    package "monde"{
+
+        class Monde{
+        int[] semaphores
+        + Monde()
+        + void aCommeEntree(Etapes... etapes)
+        + void aCommeSortie(Etapes... etapes)
+        + void ajouter(Etapes... etapes)
+        + int nbEtapes()
+        + int nbGuichets()
+        + int nbActivite()
+        + Iterator<Etape> iterator()
+        + GestionnaireEtapes getLesEtapes()
+        + SasEntree getEntree()
+        + Sas Sortie getSortie()
+        + String getNom()
+        + String toString()
+        + Etape getEtape()
+        + int[] getSemaphoreGuichet()
+        + String toC()
+
+        }
+
+        class GestionnaireEtapes{
+        + GestionnaireEtapes()
+        + void ajouter (Etapes... etapes)
+        + int nbEtapes()
+        + Iterator<Etape> iterator()
+        + Etape getEtape(int i )
+        + String toString()
+        }
+
+        abstract class Etape{
+        String nom
+        int numero
+        + Etape(String nom)
+        + void ajouterSucceseur(Etape...e)
+        + boolean estUneActivite()
+        + boolean estUnGuichet()
+        + Iterator<Etape>iterator()
+        + String getNom ()
+        + GestionnaireEtapes getSucceseurs()
+        + int nbSucceseurs()
+        + getNumero()
+        + String toString ()
+        + abstract String toC()
+        + Etape getNextEtape (int i )
+        + abstract int getTemps()
+        + abstract int getEcartTemps()
+
+        }
+
+        class Guichet {
+        int nbjetons
+        int nbSemaphore
+        + Guichet (String nom)
+        + Guichet (String nom, int nb)
+        + boolean estUneActivite()
+        + boolean estUnGuichet()
+        + int getNbJetons()
+        + int getNbSemaphore()
+        + String toString()
+        + String getNomSuccesseur()
+        + String toC()
+        + int getTemps()
+        + int getEcartTemps()
+
+        }
+
+        class Activite {
+        int temps
+        int ecartTemps
+        + Activite(String nom)
+        + Activite(String nom, int t, int e)
+        + boolean estUneActivite()
+        + boolean estUnGuichet()
+        + int getEcartTemps()
+        + int getTemps()
+        + String toString()
+        + int getNumeroSuccesseur()
+        + String getNomSuccesseur()
+        + String toC()
+        }
+
+        class ActiviteRestreinte {
+        ActiviteRestreinte(String nom)
+        ActiviteRestreinte(String nom, int t, int e)
+
+        }
+
+        class SasEntree{
+        + SasEntree()
+        + String toC()
+        }
+
+        class SasSortie{
+        + SasSortie()
+        + String toC()
+        }
+
+        interface Iterable{
+        + Iterator<Etape>iterator()
+        }
+
+}
+
+FabriqueNumero --"static instance" FabriqueNumero
+GestionnaireEtapes "1"-left- Monde  : "lesEtapes         "
+GestionnaireEtapes -right- "*" Etape : "1           "
+Monde -down-"1" SasEntree : "entree"
+Monde -down-"1" SasSortie : "sortie"
+Monde "1"--"1" KitC
+Simulation --"1" KitC
+
+Monde .up.|> Iterable
+GestionnaireEtapes .up.|> Iterable
+Etape .up.|> Iterable
+
+Activite -up-|> Etape
+Guichet -up-|> Etape
+ActiviteRestreinte -up-|> Activite
+SasSortie -up-|> Activite
+SasEntree -up-|> Activite
+
+TwiskException --|> Exception
+MondeException --|> Exception
+
+@enduml

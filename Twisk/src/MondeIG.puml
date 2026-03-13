@@ -1,0 +1,160 @@
+@startuml
+
+package "twisk.mondeIG" {
+
+    class ActiviteIG {
+        + ActiviteIG(nom: String, larg: int, haut: int)
+        + boolean estUneActivite()
+    }
+
+
+
+   class ArcIG {
+        - PointDeControleIG depart
+        - PointDeControleIG arrive
+        - boolean selected
+
+        + ArcIG(depart: PointDeControleIG, arrive: PointDeControleIG)
+        + int getDepartX()
+        + int getDepartY()
+        + double getArriveX()
+        + double getArriveY()
+        + PointDeControleIG getDepart()
+        + PointDeControleIG getArrive()
+        + boolean isSelected()
+        + void setSelected()
+    }
+
+
+    class ClientIG {
+        - int centreX
+        - int centreY
+        - int couleur
+        - EtapeIG etape
+
+        + ClientIG(centreX: int, centreY: int, couleur: int, etape: EtapeIG)
+        + int getCentreX()
+        + int getCentreY()
+        + int getCouleur()
+        + EtapeIG getEtape()
+    }
+
+
+    class CorrespondancesEtapes {
+        - HashMap<EtapeIG, Etape> correspondances
+
+        + CorrespondancesEtapes()
+        + void ajouter( EtapeIG, Etape)
+        + Etape get(EtapeIG)
+    }
+
+
+
+    class EtapeIG {
+        + String getNom()
+        + boolean estUneActivite()
+        + boolean estUnGuichet()
+        + boolean estUneActiviteRestreinte()
+        + int getPosX()
+        + int getPosY()
+        + Iterable<EtapeIG> getSuccesseurs()
+    }
+
+    class GuichetIG {
+        + GuichetIG(String nom, int larg, int haut)
+        + boolean estUnGuichet()
+    }
+
+     class MondeIG {
+        - HashMap<String, EtapeIG> etapes
+        - LinkedList<ArcIG> arcs
+        - LinkedList<EtapeIG> etapesSelecteds
+        - LinkedList<ArcIG> arcsSelecteds
+        - LinkedList<EtapeIG> entrees
+        - LinkedList<EtapeIG> sorties
+        - LinkedList<ClientIG> clients
+
+        + MondeIG()
+        + void ajouterEtape(String type)
+        + void ajouter(PointDeControleIG pt1, PointDeControleIG pt2)
+        + void clicPointDeControle(PointDeControleIG pt)
+        + void clicEtape(EtapeIG etape)
+        + void clicArc(ArcIG arc)
+        + boolean peutAjouterArc()
+        + Iterator<EtapeIG> iterator()
+        + Iterator<ArcIG> iteratorArcs()
+        + void ajouterEtapeSelectionner(EtapeIG etape)
+        + void enleverEtapeSelectionner(EtapeIG etape)
+        + void ajouterArcSelectionner(ArcIG arcIG)
+        + void enleverArcSelectionner(ArcIG arcIG)
+        + LinkedList<EtapeIG> getEtapesSelecteds()
+        + void supprimer()
+        + void setNomEtape(EtapeIG etape, String nom)
+        + void effacerSelection()
+        + void ajouterEntree(EtapeIG entree)
+        + void enleverEntree(EtapeIG entree)
+        + void ajouterSortie(EtapeIG sortie)
+        + void enleverSortie(EtapeIG sortie)
+        + void netoyageEtapeSelectionnee()
+        + boolean estEntree(EtapeIG entree)
+        + boolean estSortie(EtapeIG sortie)
+        + void estVideEntree()
+        + void entreeSansPredecesseurs()
+        + void estVideSortie()
+        + void sortieSansSuccesseurs()
+        + void aSuccesseurs()
+        + void aPredecesseurs()
+        + void guichetsCorrect()
+        + void definirActivitesRestreinte()
+        + void ajouterClient(ClientIG c)
+        + void viderClients()
+        + LinkedList<ClientIG> getClientsIG()
+        + int getNbClientsIG()
+    }
+
+       class PointDeControleIG {
+
+        - int centreX
+        - int centreY
+        - String id
+        - EtapeIG etape
+        - boolean selected
+
+        + PointDeControleIG(EtapeIG etape, int centreX, int centreY)
+        + int getCentreX()
+        + int getCentreY()
+        + void setSelected()
+        + boolean isSelected()
+        + EtapeIG getEtape()
+        + void setCentreX(int centreX)
+        + void setCentreY(int centreY)
+    }
+
+    class SimulationIG {
+        - MondeIG monde
+        - CorrespondancesEtapes correspondances
+        - GestionnaireClients gest
+
+        + SimulationIG(MondeIG monde)
+        + void simuler() throws MondeException
+        - void verifierMondeIG() throws MondeException
+        - Monde creerMonde()
+        + void reagir()
+    }
+
+    MondeIG --|> SujetObserve
+    EtapeIG --"    *    " PointDeControleIG
+    SimulationIG ..|> Observateur
+    ClientIG -- EtapeIG
+    ActiviteIG --|> EtapeIG
+    SimulationIG -- MondeIG
+    SimulationIG -- CorrespondancesEtapes
+    SimulationIG -- GestionnaireClients
+    MondeIG --"*" EtapeIG
+    MondeIG -- ClientIG
+    ArcIG -- "2" PointDeControleIG
+    GuichetIG --|> EtapeIG
+    CorrespondancesEtapes -- EtapeIG
+    CorrespondancesEtapes -- Etape
+
+@enduml

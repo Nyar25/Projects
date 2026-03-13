@@ -1,0 +1,171 @@
+@startuml
+
+title Projet twisk
+
+skinparam packageBorderColor yellow
+
+package "Vue"  {
+
+    class ClientTwisk {
+
+    + static Monde fabriqueMonde1()
+    + static void main(String[] args)
+
+    }
+
+    interface Iterable{
+
+        + Iterator<Etape>iterator()
+
+    }
+
+    package "Ecouteur"{
+
+        class EcouteurArc {
+            - MondeIG monde
+            - ArcIG arc
+            + EcouteurArc(MondeIG monde, ArcIG arc)
+            + void handle(MouseEvent event)
+        }
+
+        class EcouteurDropAccepter {
+            - VueMondeIG monde
+            + EcouteurDropAccepter(VueMondeIG monde)
+            + void handle(DragEvent event)
+        }
+
+        class EcouteurDropActiver {
+            + VueMondeIG monde
+            + EcouteurDropActiver(VueMondeIG monde)
+            + void handle(DragEvent event)
+        }
+
+        class EcouteurEtape {
+            - MondeIG monde
+            - EtapeIG etape
+            + EcouteurEtape(MondeIG monde, EtapeIG etape)
+            + void handle(MouseEvent event)
+        }
+
+        class EcouteurJeton {
+            - MondeIG monde
+            + EcouteurJeton(MondeIG monde)
+            + void handle(ActionEvent actionEvent)
+        }
+
+        class EcouteurPointDeControle {
+            - MondeIG monde
+            - PointDeControleIG point
+            + EcouteurPointDeControle(PointDeControleIG point, MondeIG monde)
+            + handle(MouseEvent event)
+        }
+
+        class EcouteurRenommer {
+            - MondeIG monde
+            + EcouteurRenommer(MondeIG monde)
+            + handle(ActionEvent event)
+        }
+
+        class EcouteurSource {
+            - VueEtapeIG etape
+            + EcouteurSource(VueEtapeIG etape)
+            + handle(MouseEvent event)
+        }
+
+        class EcouteurTemps {
+            - MondeIG monde
+            + EcouteurTemps(MondeIG monde)
+            + handle(ActionEvent actionEvent)
+        }
+
+    }
+
+    class VueActiviteIG {
+        - HBox clients
+        + VueActiviteIG(MondeIG monde, EtapeIG etape)
+    }
+
+    class VueClientIG {
+        + VueClientIG(ClientIG client)
+    }
+
+    class VueEtapeIG {
+        - Label titre
+        - EtapeIG etape
+        + VueEtapeIG(MondeIG monde, EtapeIG etape)
+        + String getEtapeID()
+        + void reagir()
+    }
+
+    class VueGuichetIG {
+        - HBox clients
+        + VueGuichetIG(MondeIG monde, EtapeIG etape)
+    }
+
+    class VueMenu {
+        - MondeIG monde
+        + VueMenu(MondeIG monde)
+        + reagir(): void
+    }
+
+
+    class VueMondeIG {
+        - MondeIG sujet
+        + VueMondeIG(MondeIG monde)
+        + getSujet(): MondeIG
+        + reagir(): void
+    }
+
+    class VueOutils {
+        - LinkedList<Button> boutons
+        - SujetObserve sujet
+        + VueOutils(MondeIG monde)
+        + reagir(): void
+    }
+
+    class VuePointDeControleIG {
+
+        + VuePointDeControleIG(PointDeControleIG,MondeIG ) {
+
+    }
+
+    VuePointDeControleIG ..|> Circle
+    VueOutils --|> TilePane
+    VueOutils ..|> Observateur
+    VueMenu --|> MenuBar
+    VueMenu ..|> Observateur
+    VueMondeIG --|> Pane
+    VueMondeIG ..|> Observateur
+    VueGuichetIG --|> VueEtapeIG
+    VueEtapeIG --|> VBox
+    VueEtapeIG ..|> Observateur
+    VueClientIG --|> Circle
+    VueActiviteIG --|> VueEtapeIG
+    EcouteurTemps ..|> EventHandler
+    EcouteurSource ..|> EventHandler
+    EcouteurRenommer ..|> EventHandler
+    EcouteurPointDeControle ..|> EventHandler
+    EcouteurJeton ..|> EventHandler
+    EcouteurEtape ..|> EventHandler
+    EcouteurDropActiver ..|> EventHandler
+    EcouteurDropAccepter ..|> EventHandler
+    EcouteurArc ..|> EventHandler
+
+    KitC -- Monde
+    EcouteurJeton -- MondeIG
+    EcouteurArc -- ArcIG
+    EcouteurArc -- MondeIG
+    EcouteurSource -- vueEtapeIG
+    EcouteurPointDeControle -- PointDeControleIG
+    EcouteurPointDeControle -- MondeIG
+    EcouteurTemps -- MondeIG
+    MondeIG -- VueMondeIG
+    VueEtapeIG -- EtapeIG
+    EcouteurDropAccepter -- VueMondeIG
+    EcouteurDropActiver-- VueMondeIG
+    EcouteurRenommer -- EcouteurEtape
+    EcouteurEtape -- EtapeIG
+    EcouteurEtape -- MondeIG
+
+}
+@enduml

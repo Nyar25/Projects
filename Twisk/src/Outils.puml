@@ -1,0 +1,82 @@
+@startuml
+
+    package "outlis"{
+
+        class TailleComposants {
+
+            - static TailleComposants instance
+            - final int HAUTEURCLIENTS
+            - final int LARGEURACTIVITE
+            - final int HAUTEURBOUTON
+            - final int LARGEURBOUTON
+            - final int RAYONPOINTDECONTROLE
+            - final int HAUTEURLABEL
+            - final int PADDING
+            - static final int HAUTEURSCENE
+            - static final int LARGEURSCENE
+            - static final int RAYONCLIENT
+            - TailleComposants()
+            + static TailleComposants getInstance()
+            + int getHauteurEtape()
+            + int getLargeurEtape()
+            + int getHauteurBouton()
+            + int getLargeurBouton()
+            + int getRayonPointDeControle()
+            + int getHauteurLabel()
+            + int getPadding()
+            + int getLargeurScene()
+            + int getHauteurScene()
+            + int getRayonClient()
+            + int CreationPosX()
+            + int CreationPosY()
+        }
+
+        class ThreadsManager {
+            - static ThreadsManager instance
+            - LinkedList<Thread> threads
+            - ThreadsManager()
+            + static ThreadsManager getInstance()
+            + void lancer(Task<Void> task)
+            + void detruireTout()
+        }
+
+
+        class FabriqueNumero {
+        int cptEtape
+        int cptSemaphore
+        - FabriqueNumero()
+        + static FabriqueNumero getInstance()
+        + int getNumeroEtape()
+        + void reset()
+        + int getNumeroSemaphore()
+        }
+
+        class KitC {
+
+            - Monde monde
+            + KitC(Monde monde)
+            + void creerEnvironnement()
+            + void creerFichier(String CodeC)
+            + void construireLaBibliotheque()
+            + void compiler()
+            + String faireDefine()
+
+        }
+
+        class FabriqueNumero {
+
+         - static FabriqueNumero instance
+         - int cptEtape
+         - int cptSemaphore
+         - int noPointDeControle
+         - FabriqueNumero()
+         + static FabriqueNumero getInstance()
+         + int getNumeroEtape()
+         + void reset()
+         + int getNumeroSemaphore()
+         + String getIdentifiantPointDeControle()
+         }
+
+    }
+
+@enduml
