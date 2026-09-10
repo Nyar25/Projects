@@ -1,0 +1,122 @@
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+:root {
+  --field: #4a7c3f;
+  --field-dark: #345a2c;
+  --admin: #c97b3d;
+  --admin-dark: #9c5c29;
+  --driver: #1c2b1e;
+  --cream: #f5f0e6;
+  --danger: #d6483a;
+  --sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --heading: "Archivo", var(--sans);
+
+  color-scheme: light;
+  font: 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--driver);
+}
+
+body {
+  min-height: 100svh;
+}
+
+/* On wide viewports the app reads as a phone-shaped product shot rather
+   than stretching a mobile layout edge-to-edge across the screen. */
+#root {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100svh;
+  background: #fff;
+  position: relative;
+  box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+    background: radial-gradient(circle at 50% 0%, #2a3d27 0%, #12190f 65%, #0b0f09 100%);
+  }
+
+  #root {
+    min-height: min(920px, calc(100svh - 80px));
+    height: min(920px, calc(100svh - 80px));
+    overflow-y: auto;
+    border-radius: 32px;
+    box-shadow:
+      0 0 0 8px #0b0f09,
+      0 30px 60px -20px rgba(0, 0, 0, 0.55),
+      0 10px 24px -10px rgba(0, 0, 0, 0.4);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(28, 43, 30, 0.25) transparent;
+  }
+
+  #root::-webkit-scrollbar {
+    width: 8px;
+  }
+  #root::-webkit-scrollbar-thumb {
+    background: rgba(28, 43, 30, 0.2);
+    border-radius: 8px;
+  }
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--heading);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--field);
+  outline-offset: 2px;
+}
+
+input::placeholder {
+  color: #1c2b1e;
+  opacity: 0.32;
+}
+
+/* Subtle entrance animation applied per-screen via .screen-in */
+@keyframes screenIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.screen-in {
+  animation: screenIn 0.28s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-in {
+    animation: none;
+  }
+}
