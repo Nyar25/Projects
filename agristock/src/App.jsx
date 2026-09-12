@@ -626,6 +626,7 @@ const ADMIN_MODULES = [
   { id: "moisson", label: "Moisson", emoji: "🌽" },
   { id: "pressage", label: "Pressage", emoji: "📦" },
   { id: "stock", label: "Stock", emoji: "🗃️" },
+  { id: "inventaire", label: "Inventaire", emoji: "📋" },
   { id: "facturation", label: "Facturation", emoji: "🧾" },
   { id: "infos", label: "Infos & cours", emoji: "📊" },
 ];
@@ -2090,6 +2091,149 @@ function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, produit
 }
 
 /* ============================================================
+   MODULE: INVENTAIRE — reprend tous les stocks pour un bilan comptable
+   ============================================================ */
+function computeInventaireLignes({ moissonChantiers, ensilageChantiers, stockPaille, produitsStock }) {
+  const lignes = [];
+
+  const byCereale = {};
+  moissonChantiers.forEach((c) => {
+    const total = c.pesees.reduce((s, p) => s + p.net, 0);
+    byCereale[c.cereale] = (byCereale[c.cereale] || 0) + total;
+  });
+  Object.entries(byCereale).forEach(([cereale, total]) => {
+    lignes.push({ key: `moisson-${cereale}`, categorie: "Moisson", article: cereale, unite: "kg", theorique: total });
+  });
+
+  const totalEnsilageHerbe = ensilageChantiers.filter((c) => c.typeEnsilage === "Herbe").reduce((s, c) => s + c.pesees.reduce((s2, p) => s2 + p.net, 0), 0);
+  const totalEnsilageMais = ensilageChantiers.filter((c) => c.typeEnsilage === "Maïs").reduce((s, c) => s + c.pesees.reduce((s2, p) => s2 + p.net, 0), 0);
+  lignes.push({ key: "ensilage-Herbe", categorie: "Ensilage", article: "Herbe", unite: "kg", theorique: totalEnsilageHerbe });
+  lignes.push({ key: "ensilage-Mais", categorie: "Ensilage", article: "Maïs", unite: "kg", theorique: totalEnsilageMais });
+
+  const totalPaille = stockPaille.mouvements.filter((m) => m.typeBotte === "Paille").reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
+  const totalFoin = stockPaille.mouvements.filter((m) => m.typeBotte === "Foin").reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
+  lignes.push({ key: "pressage-Paille", categorie: "Pressage", article: "Paille", unite: "bottes", theorique: totalPaille });
+  lignes.push({ key: "pressage-Foin", categorie: "Pressage", article: "Foin", unite: "bottes", theorique: totalFoin });
+
+  const byProduit = {};
+  produitsStock.mouvements.forEach((m) => { byProduit[m.produit] = (byProduit[m.produit] || 0) + (m.type === "entrée" ? m.quantite : -m.quantite); });
+  Object.entries(byProduit).forEach(([produit, quantite]) => {
+    lignes.push({ key: `produit-${produit}`, categorie: "Produits — intrants", article: produit, unite: "", theorique: quantite });
+  });
+
+  return lignes;
+}
+
+function InventaireModule({ moissonChantiers, ensilageChantiers, stockPaille, produitsStock, inventaires, setInventaires, onBack }) {
+  const lignesTheoriques = useMemo(
+    () => computeInventaireLignes({ moissonChantiers, ensilageChantiers, stockPaille, produitsStock }),
+    [moissonChantiers, ensilageChantiers, stockPaille, produitsStock]
+  );
+  const groupes = useMemo(() => {
+    const g = {};
+    lignesTheoriques.forEach((l) => { (g[l.categorie] = g[l.categorie] || []).push(l); });
+    return g;
+  }, [lignesTheoriques]);
+
+  const [dateInventaire, setDateInventaire] = useState(todayISO());
+  const [reels, setReels] = useState({});
+  const [openId, setOpenId] = useState(null);
+  const inventaireOuvert = inventaires.find((i) => i.id === openId);
+
+  function enregistrer() {
+    const lignes = lignesTheoriques.map((l) => ({
+      ...l,
+      reel: parseFloat(reels[l.key]) || 0,
+    }));
+    const inv = { id: uid(), date: dateInventaire, lignes };
+    setInventaires((invs) => [inv, ...invs]);
+    setOpenId(inv.id);
+    setReels({});
+  }
+
+  function exportPdf(inv) {
+    const rows = inv.lignes.map((l) =>
+      `<tr><td>${l.categorie}</td><td>${l.article}</td><td>${fmt(l.theorique, 0)} ${l.unite}</td><td>${fmt(l.reel, 0)} ${l.unite}</td><td>${fmt(l.reel - l.theorique, 0)} ${l.unite}</td></tr>`
+    ).join("");
+    openPdfWindow(`Inventaire — ${inv.date}`,
+      `<div class="meta">Date de l'inventaire : ${inv.date}</div>
+       <table><thead><tr><th>Catégorie</th><th>Article</th><th>Stock théorique</th><th>Stock réel</th><th>Écart</th></tr></thead><tbody>${rows}</tbody></table>`);
+  }
+
+  return (
+    <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
+      <ScreenHeader title="Inventaire" onBack={onBack} tone="admin" />
+      <div className="p-5 space-y-4">
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Nouvel inventaire</div>
+          <div>
+            <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Date</div>
+            <BigInput type="date" value={dateInventaire} onChange={(e) => setDateInventaire(e.target.value)} className="text-base text-left" />
+          </div>
+        </Card>
+
+        {Object.entries(groupes).map(([categorie, lignes]) => (
+          <Card key={categorie} className="p-5 space-y-3">
+            <div className="font-extrabold text-sm text-[#1C2B1E]/50">{categorie}</div>
+            <div className="space-y-3">
+              {lignes.map((l) => (
+                <div key={l.key} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold truncate">{l.article}</div>
+                    <div className="text-xs text-[#1C2B1E]/40">Théorique : {fmt(l.theorique, 0)} {l.unite}</div>
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={reels[l.key] ?? String(Math.round(l.theorique))}
+                    onChange={(e) => setReels((r) => ({ ...r, [l.key]: e.target.value }))}
+                    className="w-28 px-3 py-2.5 rounded-xl border-2 border-[#1C2B1E]/15 bg-white text-base font-bold text-center focus:outline-none focus:border-[#C97B3D] focus:shadow-[0_0_0_4px_rgba(201,123,61,0.12)]"
+                  />
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+
+        <ActionButton tone="admin" onClick={enregistrer}>+ Enregistrer l'inventaire</ActionButton>
+
+        {inventaires.length > 0 && (
+          <>
+            <div className="font-extrabold text-sm text-[#1C2B1E]/50 pt-2">Inventaires précédents</div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {inventaires.map((inv) => (
+                <button
+                  key={inv.id}
+                  onClick={() => setOpenId(inv.id)}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${openId === inv.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}
+                >
+                  {inv.date}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {inventaireOuvert && (
+          <Card className="p-5">
+            <div className="font-extrabold text-lg mb-3">Inventaire du {inventaireOuvert.date}</div>
+            <div className="space-y-1.5 mb-4">
+              {inventaireOuvert.lignes.map((l) => (
+                <div key={l.key} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
+                  <span>{l.categorie} — {l.article}</span>
+                  <span className="font-bold">{fmt(l.reel, 0)} {l.unite}</span>
+                </div>
+              ))}
+            </div>
+            <ActionButton tone="ghost" size="md" onClick={() => exportPdf(inventaireOuvert)}>📄 Export PDF</ActionButton>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    COMPOSANT: STOCK ANNUEL (visible toute l'année + export PDF)
    ============================================================ */
 function StockAnnuelView({ title, unite, mouvements, soldeActuel, seuilAlerte, readOnly = false }) {
@@ -2524,6 +2668,7 @@ export default function App() {
   const [pressageTaches, setPressageTaches] = useState([]);
   const [stockPaille, setStockPaille] = useState({ seuilAlerte: 500, mouvements: [] });
   const [produitsStock, setProduitsStock] = useState({ mouvements: [] });
+  const [inventaires, setInventaires] = useState([]);
   const [factures, setFactures] = useState([]);
   const [infos, setInfos] = useState({ cours: COURS_DEFAUT, entraide: [] });
 
@@ -2590,6 +2735,7 @@ export default function App() {
     if (adminModule === "moisson") return <MoissonAdminModule parcelles={parcelles} chantiers={moissonChantiers} setChantiers={setMoissonChantiers} onBack={back} />;
     if (adminModule === "pressage") return <PressageAdminModule parcelles={parcelles} taches={pressageTaches} setTaches={setPressageTaches} stock={stockPaille} setStock={setStockPaille} onBack={back} />;
     if (adminModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="admin" />;
+    if (adminModule === "inventaire") return <InventaireModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} inventaires={inventaires} setInventaires={setInventaires} onBack={back} />;
     if (adminModule === "facturation") return <FacturationModule stockPaille={stockPaille} setStockPaille={setStockPaille} factures={factures} setFactures={setFactures} onBack={back} />;
     if (adminModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly={false} onBack={back} tone="admin" />;
     if (adminModule === "parametres") return <ParametresModule pontBascule={currentAccount?.pontBascule} onChangePontBascule={updatePontBascule} onBack={back} />;
