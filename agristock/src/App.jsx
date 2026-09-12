@@ -588,6 +588,7 @@ const ADMIN_MODULES = [
   { id: "phyto", label: "Phytosanitaire", emoji: "🧪" },
   { id: "facturation", label: "Facturation", emoji: "🧾" },
   { id: "infos", label: "Infos & cours", emoji: "📊" },
+  { id: "parametres", label: "Paramètres", emoji: "⚙️" },
 ];
 
 function AdminHome({ onOpen, onLogout, onSwitchRole, pontBascule }) {
@@ -2494,6 +2495,32 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageCh
 }
 
 /* ============================================================
+   MODULE: PARAMÈTRES — réglages du compte (pont bascule, ...)
+   ============================================================ */
+function ParametresModule({ pontBascule, onChangePontBascule, onBack }) {
+  return (
+    <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
+      <ScreenHeader title="Paramètres" onBack={onBack} tone="admin" />
+      <div className="p-5 space-y-4">
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Pont bascule</div>
+          <p className="text-xs text-[#1C2B1E]/45">
+            Les modules Ensilage et Épandage nécessitent un pont bascule pour peser les chargements. Activez cette option si l'exploitation en dispose.
+          </p>
+          <PillChoice
+            tone="admin"
+            columns={2}
+            value={pontBascule ? "oui" : "non"}
+            onChange={(v) => onChangePontBascule(v === "oui")}
+            options={[{ value: "oui", label: "Oui" }, { value: "non", label: "Non" }]}
+          />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    APP PRINCIPALE
    ============================================================ */
 export default function App() {
@@ -2525,6 +2552,18 @@ export default function App() {
       const next = [...a, acc];
       saveStoredAccounts(next);
       return next;
+    });
+  }
+  function updatePontBascule(value) {
+    setCurrentAccount((acc) => {
+      if (!acc) return acc;
+      const updated = { ...acc, pontBascule: value };
+      setAccounts((all) => {
+        const next = all.map((a) => (a.email === acc.email ? updated : a));
+        saveStoredAccounts(next);
+        return next;
+      });
+      return updated;
     });
   }
   function logout() {
@@ -2565,6 +2604,7 @@ export default function App() {
     if (adminModule === "phyto") return <PhytoModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
     if (adminModule === "facturation") return <FacturationModule stockPaille={stockPaille} setStockPaille={setStockPaille} phyto={phyto} setPhyto={setPhyto} factures={factures} setFactures={setFactures} onBack={back} />;
     if (adminModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly={false} onBack={back} tone="admin" />;
+    if (adminModule === "parametres") return <ParametresModule pontBascule={currentAccount?.pontBascule} onChangePontBascule={updatePontBascule} onBack={back} />;
   }
 
   if (screen === "driverApp") {
