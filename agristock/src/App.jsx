@@ -2115,7 +2115,10 @@ function stockSources(stockPaille, phyto) {
 function emptyLigne() { return { id: uid(), designation: "", quantite: 1, prixUnitaire: 0, tva: 0.2, lieAuStock: "" }; }
 
 function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factures, setFactures, onBack }) {
+  const [clientType, setClientType] = useState("particulier"); // particulier | professionnel
   const [client, setClient] = useState("");
+  const [siren, setSiren] = useState("");
+  const [numTva, setNumTva] = useState("");
   const [lignes, setLignes] = useState([emptyLigne()]);
   const [openId, setOpenId] = useState(factures[0]?.id || null);
   const sources = stockSources(stockPaille, phyto);
@@ -2145,16 +2148,28 @@ function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factu
       azoteMouvements: [...(p.azoteMouvements || []), ...lignes.filter((l) => l.lieAuStock === "azote" && l.designation).map((l) =>
         ({ id: uid(), date: dateFacture, type: "sortie", quantite: parseFloat(l.quantite) || 0, libelle: `Facture ${numero}` }))],
     }));
-    const facture = { id: uid(), numero, date: dateFacture, client: client.trim(), lignes: lignes.filter((l) => l.designation), totaux };
+    const facture = {
+      id: uid(), numero, date: dateFacture,
+      clientType, client: client.trim(),
+      siren: clientType === "professionnel" ? siren.trim() : "",
+      numTva: clientType === "professionnel" ? numTva.trim() : "",
+      lignes: lignes.filter((l) => l.designation), totaux,
+    };
     setFactures((fs) => [facture, ...fs]);
     setOpenId(facture.id);
+    setClientType("particulier");
     setClient("");
+    setSiren("");
+    setNumTva("");
     setLignes([emptyLigne()]);
   }
 
   function exportFacturePdf(f) {
     const rows = f.lignes.map((l) => `<tr><td>${l.designation}</td><td>${fmt(l.quantite, 2)}</td><td>${fmt(l.prixUnitaire, 2)} €</td><td>${fmt((parseFloat(l.quantite) || 0) * (parseFloat(l.prixUnitaire) || 0), 2)} €</td></tr>`).join("");
-    openPdfWindow(`Facture ${f.numero}`, `<div class="meta">${f.date} — ${f.client}</div>
+    const clientInfo = f.clientType === "professionnel"
+      ? `${f.client}${f.siren ? ` — SIREN ${f.siren}` : ""}${f.numTva ? ` — TVA ${f.numTva}` : ""}`
+      : f.client;
+    openPdfWindow(`Facture ${f.numero}`, `<div class="meta">${f.date} — ${clientInfo}</div>
       <table><thead><tr><th>Désignation</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead><tbody>${rows}</tbody></table>
       <table style="margin-top:16px;max-width:300px;margin-left:auto;"><tr><td>Total HT</td><td>${fmt(f.totaux.ht, 2)} €</td></tr><tr class="total-row"><td>TOTAL TTC</td><td>${fmt(f.totaux.ttc, 2)} €</td></tr></table>`);
   }
@@ -2167,7 +2182,31 @@ function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factu
       <div className="p-5 space-y-4">
         <Card className="p-5 space-y-4">
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Nouvelle facture</div>
-          <BigInput value={client} onChange={(e) => setClient(e.target.value)} placeholder="Nom du client" className="text-base text-left" />
+          <PillChoice
+            tone="admin"
+            columns={2}
+            value={clientType}
+            onChange={setClientType}
+            options={[{ value: "particulier", label: "Particulier" }, { value: "professionnel", label: "Professionnel" }]}
+          />
+          <BigInput value={client} onChange={(e) => setClient(e.target.value)} placeholder={clientType === "professionnel" ? "Nom de l'entreprise" : "Nom du client"} className="text-base text-left" />
+          {clientType === "professionnel" && (
+            <div className="grid grid-cols-2 gap-2">
+              <BigInput
+                value={siren}
+                onChange={(e) => setSiren(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                placeholder="N° SIREN"
+                inputMode="numeric"
+                className="text-sm text-left"
+              />
+              <BigInput
+                value={numTva}
+                onChange={(e) => setNumTva(e.target.value.toUpperCase())}
+                placeholder="N° TVA intracom."
+                className="text-sm text-left"
+              />
+            </div>
+          )}
           {lignes.map((l) => (
             <Card key={l.id} className="p-3 space-y-2 !bg-[#F5F0E6]/50">
               <BigInput value={l.designation} onChange={(e) => updateLigne(l.id, { designation: e.target.value })} placeholder="Désignation" className="text-sm text-left py-2.5" />
@@ -2206,6 +2245,13 @@ function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factu
               <div>
                 <div className="font-extrabold">{facture.numero}</div>
                 <div className="text-xs text-[#1C2B1E]/45">{facture.date} · {facture.client}</div>
+                {facture.clientType === "professionnel" && (
+                  <div className="text-xs text-[#1C2B1E]/45">
+                    {facture.siren && `SIREN ${facture.siren}`}
+                    {facture.siren && facture.numTva && " · "}
+                    {facture.numTva && `TVA ${facture.numTva}`}
+                  </div>
+                )}
               </div>
               <span className="font-extrabold text-xl text-[#C97B3D]">{fmt(facture.totaux.ttc, 2)} €</span>
             </div>
