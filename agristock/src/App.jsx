@@ -796,12 +796,13 @@ function parseProduitsFromText(text) {
 /* ============================================================
    LECTURE DE FACTURE — photo ou PDF → liste produits/quantités
    ============================================================ */
-function LectureFacture({ tone = "admin" }) {
+function LectureFacture({ onValider, tone = "admin" }) {
   const [mode, setMode] = useState("photo"); // photo | pdf
   const [status, setStatus] = useState("idle"); // idle | lecture | revue | erreur
   const [error, setError] = useState("");
   const [fileName, setFileName] = useState("");
   const [extraits, setExtraits] = useState([]);
+  const [confirme, setConfirme] = useState(false);
 
   async function handlePhotoChange(e) {
     const file = e.target.files && e.target.files[0];
@@ -869,12 +870,25 @@ function LectureFacture({ tone = "admin" }) {
       `<table><thead><tr><th>Produit</th><th>Quantité</th></tr></thead><tbody>${rows}</tbody></table>`);
   }
 
+  function ajouterAuStock() {
+    const valides = extraits.filter((p) => p.produit.trim() && p.quantite > 0);
+    if (valides.length === 0) return;
+    onValider(valides);
+    setConfirme(true);
+    setTimeout(() => setConfirme(false), 2000);
+    recommencer();
+  }
+
   const btnTone = tone === "admin" ? "bg-[#C97B3D] active:bg-[#9c5c29]" : "bg-[#1C2B1E] active:bg-[#0e1610]";
 
   return (
     <Card className="p-5 space-y-3">
       <div className="font-extrabold text-sm text-[#1C2B1E]/50">Lire une facture</div>
-      <p className="text-xs text-[#1C2B1E]/45">Importez ou prenez en photo une facture pour en extraire automatiquement la liste des produits et leurs quantités.</p>
+      <p className="text-xs text-[#1C2B1E]/45">Importez ou prenez en photo une facture pour en extraire automatiquement la liste des produits et leurs quantités, et les ajouter au stock.</p>
+
+      {confirme && (
+        <div className="bg-[#4A7C3F]/10 text-[#4A7C3F] rounded-2xl px-4 py-3 text-sm font-bold text-center">✓ Produits ajoutés au stock</div>
+      )}
 
       {status !== "revue" && (
         <>
@@ -914,7 +928,8 @@ function LectureFacture({ tone = "admin" }) {
             {extraits.length === 0 && <p className="text-center text-sm text-[#1C2B1E]/40 py-4">Toutes les lignes ont été retirées.</p>}
           </div>
           <button className="block w-full text-center text-sm font-bold text-[#4A7C3F] py-2" onClick={ajouterLigne}>+ Ajouter une ligne</button>
-          <ActionButton tone={tone} onClick={exportPdf} disabled={extraits.length === 0}>📄 Export PDF de la liste</ActionButton>
+          <ActionButton tone={tone} onClick={ajouterAuStock} disabled={extraits.length === 0}>Ajouter {extraits.length} produit{extraits.length > 1 ? "s" : ""} au stock</ActionButton>
+          <ActionButton tone="ghost" size="md" onClick={exportPdf} disabled={extraits.length === 0}>📄 Export PDF de la liste</ActionButton>
           <button className="block w-full text-center text-sm font-bold text-[#1C2B1E]/40 py-1" onClick={recommencer}>Recommencer</button>
         </div>
       )}
@@ -1937,7 +1952,20 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
 /* ============================================================
    MODULE: STOCK — récapitulatif ferme (moisson, bottes, ensilage)
    ============================================================ */
-function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, onBack, tone = "admin" }) {
+function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, produitsStock, setProduitsStock, onBack, tone = "admin" }) {
+  const parProduit = useMemo(() => {
+    const byProduit = {};
+    produitsStock.mouvements.forEach((m) => {
+      byProduit[m.produit] = (byProduit[m.produit] || 0) + (m.type === "entrée" ? m.quantite : -m.quantite);
+    });
+    return Object.entries(byProduit).map(([produit, quantite]) => ({ produit, quantite }));
+  }, [produitsStock.mouvements]);
+
+  function ajouterProduits(produits) {
+    setProduitsStock((s) => ({ ...s, mouvements: [...s.mouvements, ...produits.map((p) =>
+      ({ id: uid(), date: todayISO(), type: "entrée", produit: p.produit.trim(), quantite: p.quantite, libelle: "Lecture de facture" }))] }));
+  }
+
   const parMoisson = useMemo(() => {
     const byCereale = {};
     moissonChantiers.forEach((c) => {
@@ -2001,6 +2029,24 @@ function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, onBack,
             <BigStat label="Maïs" value={`${fmt(totalEnsilageMais, 0)} kg`} tone={tone} />
           </div>
         </Card>
+
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Produits — intrants</div>
+          {parProduit.length === 0 ? (
+            <p className="text-center text-sm text-[#1C2B1E]/40 py-4">Aucun produit enregistré pour le moment.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {parProduit.map((l) => (
+                <div key={l.produit} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
+                  <span>{l.produit}</span>
+                  <span className="font-bold">{fmt(l.quantite, 1)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <LectureFacture tone={tone} onValider={ajouterProduits} />
       </div>
     </div>
   );
@@ -2097,7 +2143,6 @@ function stockSources(stockPaille) {
 function emptyLigne() { return { id: uid(), designation: "", quantite: 1, prixUnitaire: 0, tva: 0.2, lieAuStock: "" }; }
 
 function FacturationModule({ stockPaille, setStockPaille, factures, setFactures, onBack }) {
-  const [mode, setMode] = useState("creer"); // creer | lire
   const [clientType, setClientType] = useState("particulier"); // particulier | professionnel
   const [client, setClient] = useState("");
   const [siren, setSiren] = useState("");
@@ -2157,18 +2202,6 @@ function FacturationModule({ stockPaille, setStockPaille, factures, setFactures,
     <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
       <ScreenHeader title="Facturation" onBack={onBack} tone="admin" />
       <div className="p-5 space-y-4">
-        <PillChoice
-          tone="admin"
-          columns={2}
-          value={mode}
-          onChange={setMode}
-          options={[{ value: "creer", label: "Nouvelle facture" }, { value: "lire", label: "Lire une facture" }]}
-        />
-
-        {mode === "lire" && <LectureFacture tone="admin" />}
-
-        {mode === "creer" && (
-        <>
         <Card className="p-5 space-y-4">
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Nouvelle facture</div>
           <PillChoice
@@ -2246,8 +2279,6 @@ function FacturationModule({ stockPaille, setStockPaille, factures, setFactures,
             </div>
             <ActionButton tone="ghost" size="md" onClick={() => exportFacturePdf(facture)}>📄 Export PDF</ActionButton>
           </Card>
-        )}
-        </>
         )}
       </div>
     </div>
@@ -2453,6 +2484,7 @@ export default function App() {
   const [moissonChantiers, setMoissonChantiers] = useState([]);
   const [pressageTaches, setPressageTaches] = useState([]);
   const [stockPaille, setStockPaille] = useState({ seuilAlerte: 500, mouvements: [] });
+  const [produitsStock, setProduitsStock] = useState({ mouvements: [] });
   const [factures, setFactures] = useState([]);
   const [infos, setInfos] = useState({ cours: COURS_DEFAUT, entraide: [] });
 
@@ -2518,7 +2550,7 @@ export default function App() {
     if (adminModule === "epandage" && currentAccount?.pontBascule) return <EpandageAdminModule parcelles={parcelles} chantiers={epandageChantiers} setChantiers={setEpandageChantiers} onBack={back} />;
     if (adminModule === "moisson") return <MoissonAdminModule parcelles={parcelles} chantiers={moissonChantiers} setChantiers={setMoissonChantiers} onBack={back} />;
     if (adminModule === "pressage") return <PressageAdminModule parcelles={parcelles} taches={pressageTaches} setTaches={setPressageTaches} stock={stockPaille} setStock={setStockPaille} onBack={back} />;
-    if (adminModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} onBack={back} tone="admin" />;
+    if (adminModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="admin" />;
     if (adminModule === "facturation") return <FacturationModule stockPaille={stockPaille} setStockPaille={setStockPaille} factures={factures} setFactures={setFactures} onBack={back} />;
     if (adminModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly={false} onBack={back} tone="admin" />;
     if (adminModule === "parametres") return <ParametresModule pontBascule={currentAccount?.pontBascule} onChangePontBascule={updatePontBascule} onBack={back} />;
@@ -2531,7 +2563,7 @@ export default function App() {
     if (driverModule === "epandage" && currentAccount?.pontBascule) return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "moisson") return <MoissonDriverModule chantiers={moissonChantiers} setChantiers={setMoissonChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "pressage") return <PressageDriverModule taches={pressageTaches} setTaches={setPressageTaches} parcelles={parcelles} driverName={driverName} onBack={back} />;
-    if (driverModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} onBack={back} tone="driver" />;
+    if (driverModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="driver" />;
     if (driverModule === "stocks") return <DriverStocksView driverName={driverName} parcelles={parcelles} ensilageChantiers={ensilageChantiers} epandageChantiers={epandageChantiers} moissonChantiers={moissonChantiers} pressageTaches={pressageTaches} stockPaille={stockPaille} onBack={back} />;
     if (driverModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly onBack={back} tone="driver" />;
   }
