@@ -749,6 +749,179 @@ function parseParcellesFromText(text) {
   return found;
 }
 
+// ---------- OCR de factures (photo) ----------
+let _tesseractLoadingPromise = null;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (_tesseractLoadingPromise) return _tesseractLoadingPromise;
+  _tesseractLoadingPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js";
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => reject(new Error("Impossible de charger le lecteur de texte."));
+    document.head.appendChild(script);
+  });
+  return _tesseractLoadingPromise;
+}
+
+async function extractImageText(file) {
+  const Tesseract = await loadTesseract();
+  const { data } = await Tesseract.recognize(file, "fra");
+  return data.text || "";
+}
+
+// Repère les lignes du type "Nom du produit ... 12" ou "Nom du produit ... 12,5 kg"
+function parseProduitsFromText(text) {
+  const lines = text.split("\n");
+  const found = [];
+  const seen = new Set();
+  const re = /^(.{2,60}?)[\s:.\-–]{0,4}(\d{1,5}(?:[.,]\d{1,2})?)\s*(kg|l|u|unités?|unit(?:é|e)s?)?\s*$/i;
+  lines.forEach((raw) => {
+    const line = raw.trim().replace(/\s{2,}/g, " ");
+    if (!line || line.length < 4) return;
+    const m = line.match(re);
+    if (!m) return;
+    let nom = m[1].trim().replace(/^[-•·\d.\s]+/, "").trim();
+    const quantite = parseFloat(m[2].replace(",", "."));
+    if (!nom || nom.length < 2 || !Number.isFinite(quantite) || quantite <= 0 || quantite > 100000) return;
+    if (/^(total|date|n°|numero|num[ée]ro|facture|client|page|tva|ht|ttc)\b/i.test(nom)) return;
+    const key = `${nom.toLowerCase()}|${quantite}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push({ id: uid(), produit: nom, quantite });
+  });
+  return found;
+}
+
+/* ============================================================
+   LECTURE DE FACTURE — photo ou PDF → liste produits/quantités
+   ============================================================ */
+function LectureFacture({ tone = "admin" }) {
+  const [mode, setMode] = useState("photo"); // photo | pdf
+  const [status, setStatus] = useState("idle"); // idle | lecture | revue | erreur
+  const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [extraits, setExtraits] = useState([]);
+
+  async function handlePhotoChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setFileName(file.name || "photo");
+    setStatus("lecture");
+    setError("");
+    try {
+      const text = await extractImageText(file);
+      const trouves = parseProduitsFromText(text);
+      if (trouves.length === 0) {
+        setStatus("erreur");
+        setError("Aucun produit reconnu sur cette photo. Vérifiez que la facture est bien nette et bien cadrée, ou ajoutez les produits à la main.");
+        return;
+      }
+      setExtraits(trouves);
+      setStatus("revue");
+    } catch (err) {
+      setStatus("erreur");
+      setError("La lecture de la photo a échoué. Réessayez avec une photo plus nette.");
+    }
+  }
+
+  async function handlePdfChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    setStatus("lecture");
+    setError("");
+    try {
+      const text = await extractPdfText(file);
+      const trouves = parseProduitsFromText(text);
+      if (trouves.length === 0) {
+        setStatus("erreur");
+        setError("Aucun produit reconnu dans ce PDF. Le document doit contenir une ligne par produit avec sa quantité (ex : « Ammonitrate 33,5% — 12 »). Vous pouvez les ajouter à la main.");
+        return;
+      }
+      setExtraits(trouves);
+      setStatus("revue");
+    } catch (err) {
+      setStatus("erreur");
+      setError("La lecture du PDF a échoué. Vérifiez que le fichier n'est pas un scan/image et réessayez.");
+    }
+  }
+
+  function updateExtrait(id, patch) {
+    setExtraits((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }
+  function removeExtrait(id) {
+    setExtraits((list) => list.filter((p) => p.id !== id));
+  }
+  function ajouterLigne() {
+    setExtraits((list) => [...list, { id: uid(), produit: "", quantite: 1 }]);
+  }
+  function recommencer() {
+    setExtraits([]);
+    setStatus("idle");
+    setFileName("");
+    setError("");
+  }
+
+  function exportPdf() {
+    const rows = extraits.map((p) => `<tr><td>${p.produit}</td><td>${fmt(p.quantite, 2)}</td></tr>`).join("");
+    openPdfWindow(`Produits — ${fileName || "facture"}`,
+      `<table><thead><tr><th>Produit</th><th>Quantité</th></tr></thead><tbody>${rows}</tbody></table>`);
+  }
+
+  const btnTone = tone === "admin" ? "bg-[#C97B3D] active:bg-[#9c5c29]" : "bg-[#1C2B1E] active:bg-[#0e1610]";
+
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="font-extrabold text-sm text-[#1C2B1E]/50">Lire une facture</div>
+      <p className="text-xs text-[#1C2B1E]/45">Importez ou prenez en photo une facture pour en extraire automatiquement la liste des produits et leurs quantités.</p>
+
+      {status !== "revue" && (
+        <>
+          <PillChoice tone={tone} columns={2} value={mode} onChange={(m) => { setMode(m); recommencer(); }} options={[{ value: "photo", label: "Photo" }, { value: "pdf", label: "PDF" }]} />
+          {mode === "photo" ? (
+            <label className={`block w-full text-center text-sm font-bold text-white ${btnTone} rounded-2xl py-4 cursor-pointer`}>
+              {status === "lecture" ? "Lecture de la photo…" : "📷 Prendre ou choisir une photo"}
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoChange} disabled={status === "lecture"} />
+            </label>
+          ) : (
+            <label className={`block w-full text-center text-sm font-bold text-white ${btnTone} rounded-2xl py-4 cursor-pointer`}>
+              {status === "lecture" ? "Lecture du fichier…" : "📄 Choisir un fichier PDF"}
+              <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfChange} disabled={status === "lecture"} />
+            </label>
+          )}
+        </>
+      )}
+
+      {fileName && status !== "revue" && <p className="text-xs text-[#1C2B1E]/45 text-center">{fileName}</p>}
+      {status === "erreur" && <p className="text-sm text-[#D6483A] font-bold text-center">{error}</p>}
+
+      {status === "revue" && (
+        <div className="space-y-3">
+          <p className="text-sm font-bold text-[#4A7C3F]">
+            {extraits.length} produit{extraits.length > 1 ? "s" : ""} trouvé{extraits.length > 1 ? "s" : ""} dans « {fileName} ». Vérifiez et corrigez si besoin.
+          </p>
+          <div className="space-y-2">
+            {extraits.map((p) => (
+              <Card key={p.id} className="p-3 !bg-[#F5F0E6]/50">
+                <div className="flex gap-2">
+                  <BigInput value={p.produit} onChange={(e) => updateExtrait(p.id, { produit: e.target.value })} placeholder="Produit" className="text-sm text-left py-2.5 flex-1" />
+                  <BigInput type="number" step="0.01" inputMode="decimal" value={p.quantite} onChange={(e) => updateExtrait(p.id, { quantite: parseFloat(e.target.value) || 0 })} placeholder="Qté" className="text-sm py-2.5 !w-24" />
+                  <button onClick={() => removeExtrait(p.id)} className="w-10 h-10 rounded-xl bg-[#D6483A]/10 text-[#D6483A] font-bold flex-shrink-0">✕</button>
+                </div>
+              </Card>
+            ))}
+            {extraits.length === 0 && <p className="text-center text-sm text-[#1C2B1E]/40 py-4">Toutes les lignes ont été retirées.</p>}
+          </div>
+          <button className="block w-full text-center text-sm font-bold text-[#4A7C3F] py-2" onClick={ajouterLigne}>+ Ajouter une ligne</button>
+          <ActionButton tone={tone} onClick={exportPdf} disabled={extraits.length === 0}>📄 Export PDF de la liste</ActionButton>
+          <button className="block w-full text-center text-sm font-bold text-[#1C2B1E]/40 py-1" onClick={recommencer}>Recommencer</button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ParcellesModule({ parcelles, setParcelles, onBack }) {
   const [mode, setMode] = useState("manuel"); // manuel | pdf
   const [nom, setNom] = useState("");
@@ -1924,6 +2097,7 @@ function stockSources(stockPaille) {
 function emptyLigne() { return { id: uid(), designation: "", quantite: 1, prixUnitaire: 0, tva: 0.2, lieAuStock: "" }; }
 
 function FacturationModule({ stockPaille, setStockPaille, factures, setFactures, onBack }) {
+  const [mode, setMode] = useState("creer"); // creer | lire
   const [clientType, setClientType] = useState("particulier"); // particulier | professionnel
   const [client, setClient] = useState("");
   const [siren, setSiren] = useState("");
@@ -1983,6 +2157,18 @@ function FacturationModule({ stockPaille, setStockPaille, factures, setFactures,
     <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
       <ScreenHeader title="Facturation" onBack={onBack} tone="admin" />
       <div className="p-5 space-y-4">
+        <PillChoice
+          tone="admin"
+          columns={2}
+          value={mode}
+          onChange={setMode}
+          options={[{ value: "creer", label: "Nouvelle facture" }, { value: "lire", label: "Lire une facture" }]}
+        />
+
+        {mode === "lire" && <LectureFacture tone="admin" />}
+
+        {mode === "creer" && (
+        <>
         <Card className="p-5 space-y-4">
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Nouvelle facture</div>
           <PillChoice
@@ -2060,6 +2246,8 @@ function FacturationModule({ stockPaille, setStockPaille, factures, setFactures,
             </div>
             <ActionButton tone="ghost" size="md" onClick={() => exportFacturePdf(facture)}>📄 Export PDF</ActionButton>
           </Card>
+        )}
+        </>
         )}
       </div>
     </div>
