@@ -285,6 +285,17 @@ function SplashScreen({ onContinue }) {
 /* ============================================================
    CONNEXION — email + mot de passe (admin)
    ============================================================ */
+const ORIGINES_INSCRIPTION = [
+  "Bouche à oreille",
+  "Réseaux sociaux",
+  "Recherche internet",
+  "Salon ou événement agricole",
+  "Coopérative agricole",
+  "Presse / magazine agricole",
+  "Publicité",
+  "Autre",
+];
+
 function LoginScreen({ accounts, onLogin, onCreateAccount }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -294,6 +305,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
   const [newPassword, setNewPassword] = useState("");
   const [farmName, setFarmName] = useState("");
   const [newAdminCode, setNewAdminCode] = useState("");
+  const [origine, setOrigine] = useState("");
   const [verifie, setVerifie] = useState(false);
 
   function handleLogin() {
@@ -311,6 +323,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
   const passwordValide = newPassword.length >= 4;
   const codeValide = newAdminCode.length === 4;
   const farmValide = farmName.trim().length > 0;
+  const origineValide = origine !== "";
   const emailDejaPris = accounts.some((a) => a.email === newEmail.trim().toLowerCase());
 
   function verifierInformations() {
@@ -319,6 +332,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
     if (emailDejaPris) { setError("Un compte existe déjà avec cet email."); setVerifie(false); return; }
     if (!passwordValide) { setError("Le mot de passe doit faire au moins 4 caractères."); setVerifie(false); return; }
     if (!codeValide) { setError("Le code administrateur doit faire 4 chiffres."); setVerifie(false); return; }
+    if (!origineValide) { setError("Indiquez comment vous avez connu Agristock."); setVerifie(false); return; }
     setError("");
     setVerifie(true);
   }
@@ -329,7 +343,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
       return;
     }
     setError("");
-    const acc = { email: newEmail.trim().toLowerCase(), password: newPassword, farmName: farmName.trim(), adminCode: newAdminCode };
+    const acc = { email: newEmail.trim().toLowerCase(), password: newPassword, farmName: farmName.trim(), adminCode: newAdminCode, origine };
     onCreateAccount(acc);
     onLogin(acc);
   }
@@ -401,6 +415,18 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
                 />
                 <p className="text-xs text-[#1C2B1E]/45 mt-1.5 px-1">Ce code sera demandé pour accéder à l'espace administrateur (différent du chauffeur).</p>
                 {newAdminCode.length > 0 && <p className={`text-xs font-bold mt-1 px-1 ${codeValide ? "text-[#4A7C3F]" : "text-[#D6483A]"}`}>{codeValide ? "✓ Code à 4 chiffres" : `✕ ${4 - newAdminCode.length} chiffre(s) restant(s)`}</p>}
+              </div>
+
+              <div>
+                <select
+                  value={origine}
+                  onChange={(e) => { setOrigine(e.target.value); setVerifie(false); }}
+                  className="w-full px-5 py-4 rounded-2xl border-2 border-[#1C2B1E]/15 bg-white shadow-sm text-base font-semibold text-left"
+                >
+                  <option value="">Comment avez-vous connu Agristock ?</option>
+                  {ORIGINES_INSCRIPTION.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+                {origine && <p className="text-xs font-bold text-[#4A7C3F] mt-1 px-1">✓ Merci !</p>}
               </div>
 
               {error && <p className="text-sm text-[#D6483A] font-bold text-center">{error}</p>}
