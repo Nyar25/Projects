@@ -590,7 +590,8 @@ const ADMIN_MODULES = [
   { id: "infos", label: "Infos & cours", emoji: "📊" },
 ];
 
-function AdminHome({ onOpen, onLogout, onSwitchRole }) {
+function AdminHome({ onOpen, onLogout, onSwitchRole, pontBascule }) {
+  const modules = ADMIN_MODULES.filter((m) => pontBascule || (m.id !== "ensilage" && m.id !== "epandage"));
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6]">
       <div className="bg-gradient-to-b from-[#D28E51] to-[#C97B3D] text-white px-5 pt-6 pb-7 flex items-center justify-between shadow-md">
@@ -615,7 +616,7 @@ function AdminHome({ onOpen, onLogout, onSwitchRole }) {
         </div>
       </div>
       <div className="p-5 grid grid-cols-2 gap-4">
-        {ADMIN_MODULES.map((m) => (
+        {modules.map((m) => (
           <button
             key={m.id}
             onClick={() => onOpen(m.id)}
@@ -643,7 +644,8 @@ const DRIVER_MODULES = [
   { id: "infos", label: "Infos & cours", emoji: "ℹ️" },
 ];
 
-function DriverHome({ driverName, onOpen, onLogout, onSwitchRole }) {
+function DriverHome({ driverName, onOpen, onLogout, onSwitchRole, pontBascule }) {
+  const modules = DRIVER_MODULES.filter((m) => pontBascule || (m.id !== "ensilage" && m.id !== "epandage"));
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6]">
       <div className="bg-gradient-to-b from-[#2A3D2C] to-[#1C2B1E] text-white px-5 pt-6 pb-7 flex items-center justify-between shadow-md">
@@ -666,7 +668,7 @@ function DriverHome({ driverName, onOpen, onLogout, onSwitchRole }) {
         </div>
       </div>
       <div className="p-5 grid grid-cols-2 gap-4">
-        {DRIVER_MODULES.map((m) => (
+        {modules.map((m) => (
           <button key={m.id} onClick={() => onOpen(m.id)} className="group bg-white rounded-3xl p-6 flex flex-col items-center gap-3 border border-[#1C2B1E]/8 shadow-sm hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] transition-all duration-200">
             <span className="w-14 h-14 rounded-2xl bg-[#1C2B1E]/8 flex items-center justify-center text-3xl transition-transform duration-200 group-hover:scale-110">{m.emoji}</span>
             <span className="font-extrabold text-center">{m.label}</span>
@@ -2553,11 +2555,11 @@ export default function App() {
     );
 
   if (screen === "adminApp") {
-    if (!adminModule) return <AdminHome onOpen={setAdminModule} onLogout={logout} onSwitchRole={backToRoleSelect} />;
+    if (!adminModule) return <AdminHome onOpen={setAdminModule} onLogout={logout} onSwitchRole={backToRoleSelect} pontBascule={currentAccount?.pontBascule} />;
     const back = () => setAdminModule(null);
     if (adminModule === "parcelles") return <ParcellesModule parcelles={parcelles} setParcelles={setParcelles} onBack={back} />;
-    if (adminModule === "ensilage") return <EnsilageAdminModule parcelles={parcelles} chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} onBack={back} />;
-    if (adminModule === "epandage") return <EpandageAdminModule parcelles={parcelles} chantiers={epandageChantiers} setChantiers={setEpandageChantiers} onBack={back} />;
+    if (adminModule === "ensilage" && currentAccount?.pontBascule) return <EnsilageAdminModule parcelles={parcelles} chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} onBack={back} />;
+    if (adminModule === "epandage" && currentAccount?.pontBascule) return <EpandageAdminModule parcelles={parcelles} chantiers={epandageChantiers} setChantiers={setEpandageChantiers} onBack={back} />;
     if (adminModule === "moisson") return <MoissonAdminModule parcelles={parcelles} chantiers={moissonChantiers} setChantiers={setMoissonChantiers} onBack={back} />;
     if (adminModule === "pressage") return <PressageAdminModule parcelles={parcelles} taches={pressageTaches} setTaches={setPressageTaches} stock={stockPaille} setStock={setStockPaille} onBack={back} />;
     if (adminModule === "phyto") return <PhytoModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
@@ -2566,10 +2568,10 @@ export default function App() {
   }
 
   if (screen === "driverApp") {
-    if (!driverModule) return <DriverHome driverName={driverName} onOpen={setDriverModule} onLogout={logout} onSwitchRole={backToRoleSelect} />;
+    if (!driverModule) return <DriverHome driverName={driverName} onOpen={setDriverModule} onLogout={logout} onSwitchRole={backToRoleSelect} pontBascule={currentAccount?.pontBascule} />;
     const back = () => setDriverModule(null);
-    if (driverModule === "ensilage") return <EnsilageDriverModule chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
-    if (driverModule === "epandage") return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
+    if (driverModule === "ensilage" && currentAccount?.pontBascule) return <EnsilageDriverModule chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
+    if (driverModule === "epandage" && currentAccount?.pontBascule) return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "moisson") return <MoissonDriverModule chantiers={moissonChantiers} setChantiers={setMoissonChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "pressage") return <PressageDriverModule taches={pressageTaches} setTaches={setPressageTaches} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "phyto") return <PhytoDriverModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
