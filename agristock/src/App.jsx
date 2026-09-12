@@ -199,6 +199,46 @@ function PillChoice({ options, value, onChange, tone = "admin", columns = 2 }) {
   );
 }
 
+// Sélection d'une parcelle via une barre de recherche plutôt qu'une liste de boutons
+function ParcelleSearchPicker({ parcelles, value, onChange, tone = "driver" }) {
+  const [query, setQuery] = useState("");
+  const activeBg = { admin: "bg-[#C97B3D]", driver: "bg-[#1C2B1E]", field: "bg-[#4A7C3F]" }[tone];
+  const selected = parcelles.find((p) => p.id === value);
+
+  if (selected) {
+    return (
+      <div className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-white ${activeBg}`}>
+        <span className="font-bold text-sm">{selected.nom}</span>
+        <button type="button" onClick={() => onChange("")} className="text-xs font-bold opacity-70 hover:opacity-100 underline">
+          Changer
+        </button>
+      </div>
+    );
+  }
+
+  const q = query.trim().toLowerCase();
+  const matches = q ? parcelles.filter((p) => p.nom.toLowerCase().includes(q)) : parcelles;
+
+  return (
+    <div className="space-y-2">
+      <BigInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Rechercher une parcelle" className="text-base text-left" />
+      <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+        {matches.length === 0 && <div className="text-sm text-[#1C2B1E]/40 px-2 py-2">Aucune parcelle trouvée</div>}
+        {matches.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => { onChange(p.id); setQuery(""); }}
+            className="text-left px-4 py-3 rounded-xl text-sm font-bold bg-[#F5F0E6] text-[#1C2B1E]/70 hover:bg-[#ece4d2]"
+          >
+            {p.nom}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ScreenHeader({ title, onBack, tone = "field" }) {
   const bg = {
     field: "bg-gradient-to-b from-[#57905F] to-[#4A7C3F]",
@@ -1114,16 +1154,14 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const [nomChantier, setNomChantier] = useState("");
   const [typeEnsilage, setTypeEnsilage] = useState("Herbe");
   const [avecParcelle, setAvecParcelle] = useState("non");
-  const [selected, setSelected] = useState([]);
   const [openId, setOpenId] = useState(chantiers[0]?.id || null);
 
   function createChantier() {
-    if (!nomChantier.trim() || (avecParcelle === "oui" && selected.length === 0)) return;
-    const c = { id: uid(), nom: nomChantier.trim(), typeEnsilage, parcelleIds: avecParcelle === "oui" ? selected : [], statut: "ouvert", pesees: [], createdAt: todayISO() };
+    if (!nomChantier.trim()) return;
+    const c = { id: uid(), nom: nomChantier.trim(), typeEnsilage, avecParcelle: avecParcelle === "oui", statut: "ouvert", pesees: [], createdAt: todayISO() };
     setChantiers((cs) => [c, ...cs]);
     setOpenId(c.id);
     setNomChantier("");
-    setSelected([]);
   }
   function closeChantier(id) {
     setChantiers((cs) => cs.map((c) => (c.id === id ? { ...c, statut: "fermé" } : c)));
@@ -1131,14 +1169,16 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const chantier = chantiers.find((c) => c.id === openId);
 
   function exportPdf(c) {
-    const avecP = c.parcelleIds && c.parcelleIds.length > 0;
+    const byParcelle = {};
+    c.pesees.forEach((p) => { if (p.parcelleId) byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; });
+    const parcelleIdsUsed = Object.keys(byParcelle);
+    const avecP = c.avecParcelle && parcelleIdsUsed.length > 0;
     let total = 0;
     let rows = "";
     if (avecP) {
-      const byParcelle = {};
-      c.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
-      rows = c.parcelleIds.map((pid) => {
+      rows = parcelleIdsUsed.map((pid) => {
         const parc = parcelles.find((x) => x.id === pid);
+        total += byParcelle[pid] || 0;
         return `<tr><td>${parc?.nom}</td><td>${fmt(parc?.surface || 0, 1)} ha</td><td>${fmt(byParcelle[pid] || 0, 0)} kg</td></tr>`;
       }).join("");
     } else {
@@ -1159,21 +1199,8 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ouvrir un chantier</div>
           <BigInput value={nomChantier} onChange={(e) => setNomChantier(e.target.value)} placeholder="Nom du chantier" className="text-base text-left" />
           <PillChoice tone="admin" columns={2} value={typeEnsilage} onChange={setTypeEnsilage} options={[{ value: "Herbe", label: "Herbe" }, { value: "Maïs", label: "Maïs" }]} />
-          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={(v) => { setAvecParcelle(v); setSelected([]); }} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
-          {avecParcelle === "oui" && (
-            <div className="flex flex-wrap gap-2">
-              {parcelles.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
-                  className={`px-4 py-3 rounded-xl text-sm font-bold ${selected.includes(p.id) ? "bg-[#C97B3D] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}
-                >
-                  {p.nom}
-                </button>
-              ))}
-            </div>
-          )}
-          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim() || (avecParcelle === "oui" && selected.length === 0)}>+ Créer le chantier</ActionButton>
+          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={setAvecParcelle} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
+          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim()}>+ Créer le chantier</ActionButton>
         </Card>
 
         {chantiers.length > 0 && (
@@ -1191,10 +1218,10 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
         )}
 
         {chantier && (() => {
-          const avecP = chantier.parcelleIds && chantier.parcelleIds.length > 0;
           const byParcelle = {};
           let total = 0;
-          chantier.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
+          chantier.pesees.forEach((p) => { if (p.parcelleId) byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
+          const avecP = chantier.avecParcelle && Object.keys(byParcelle).length > 0;
           return (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-3">
@@ -1208,7 +1235,7 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
               </div>
               {avecP && (
                 <div className="space-y-1.5 mb-3">
-                  {chantier.parcelleIds.map((pid) => {
+                  {Object.keys(byParcelle).map((pid) => {
                     const p = parcelles.find((x) => x.id === pid);
                     return (
                       <div key={pid} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
@@ -1242,8 +1269,8 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
   const open = chantiers.filter((c) => c.statut === "ouvert");
   const [activeId, setActiveId] = useState(open[0]?.id || null);
   const chantier = chantiers.find((c) => c.id === activeId);
-  const avecP = chantier?.parcelleIds && chantier.parcelleIds.length > 0;
-  const [parcelleId, setParcelleId] = useState(chantier?.parcelleIds?.[0] || "");
+  const avecP = !!chantier?.avecParcelle;
+  const [parcelleId, setParcelleId] = useState("");
   const [tare, setTare] = useState("");
   const [brut, setBrut] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -1259,6 +1286,7 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
       : c));
     setBrut("");
     setTare("");
+    setParcelleId("");
     setConfirm(true);
     setTimeout(() => setConfirm(false), 1500);
   }
@@ -1281,7 +1309,7 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
             {open.map((c) => (
               <button
                 key={c.id}
-                onClick={() => { setActiveId(c.id); setParcelleId(c.parcelleIds?.[0] || ""); }}
+                onClick={() => { setActiveId(c.id); setParcelleId(""); }}
                 className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${activeId === c.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}
               >
                 {c.nom}
@@ -1294,20 +1322,7 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
           {avecP && (
             <div>
               <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Parcelle</div>
-              <div className="flex flex-wrap gap-2">
-                {chantier.parcelleIds.map((pid) => {
-                  const p = parcelles.find((x) => x.id === pid);
-                  return (
-                    <button
-                      key={pid}
-                      onClick={() => setParcelleId(pid)}
-                      className={`px-4 py-3 rounded-xl text-sm font-bold ${parcelleId === pid ? "bg-[#1C2B1E] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}
-                    >
-                      {p?.nom}
-                    </button>
-                  );
-                })}
-              </div>
+              <ParcelleSearchPicker tone="driver" parcelles={parcelles} value={parcelleId} onChange={setParcelleId} />
             </div>
           )}
 
@@ -1348,16 +1363,14 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
 function EpandageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const [nomChantier, setNomChantier] = useState("");
   const [avecParcelle, setAvecParcelle] = useState("non");
-  const [selected, setSelected] = useState([]);
   const [openId, setOpenId] = useState(chantiers[0]?.id || null);
 
   function createChantier() {
-    if (!nomChantier.trim() || (avecParcelle === "oui" && selected.length === 0)) return;
-    const c = { id: uid(), nom: nomChantier.trim(), parcelleIds: avecParcelle === "oui" ? selected : [], statut: "ouvert", pesees: [], createdAt: todayISO() };
+    if (!nomChantier.trim()) return;
+    const c = { id: uid(), nom: nomChantier.trim(), avecParcelle: avecParcelle === "oui", statut: "ouvert", pesees: [], createdAt: todayISO() };
     setChantiers((cs) => [c, ...cs]);
     setOpenId(c.id);
     setNomChantier("");
-    setSelected([]);
   }
   function closeChantier(id) {
     setChantiers((cs) => cs.map((c) => (c.id === id ? { ...c, statut: "fermé" } : c)));
@@ -1365,14 +1378,16 @@ function EpandageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const chantier = chantiers.find((c) => c.id === openId);
 
   function exportPdf(c) {
-    const avecP = c.parcelleIds && c.parcelleIds.length > 0;
+    const byParcelle = {};
+    c.pesees.forEach((p) => { if (p.parcelleId) byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; });
+    const parcelleIdsUsed = Object.keys(byParcelle);
+    const avecP = c.avecParcelle && parcelleIdsUsed.length > 0;
     let total = 0;
     let rows = "";
     if (avecP) {
-      const byParcelle = {};
-      c.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
-      rows = c.parcelleIds.map((pid) => {
+      rows = parcelleIdsUsed.map((pid) => {
         const parc = parcelles.find((x) => x.id === pid);
+        total += byParcelle[pid] || 0;
         return `<tr><td>${parc?.nom}</td><td>${fmt(parc?.surface || 0, 1)} ha</td><td>${fmt(byParcelle[pid] || 0, 0)} kg</td></tr>`;
       }).join("");
     } else {
@@ -1392,21 +1407,8 @@ function EpandageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
         <Card className="p-5 space-y-3">
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ouvrir un chantier</div>
           <BigInput value={nomChantier} onChange={(e) => setNomChantier(e.target.value)} placeholder="Nom du chantier" className="text-base text-left" />
-          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={(v) => { setAvecParcelle(v); setSelected([]); }} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
-          {avecParcelle === "oui" && (
-            <div className="flex flex-wrap gap-2">
-              {parcelles.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
-                  className={`px-4 py-3 rounded-xl text-sm font-bold ${selected.includes(p.id) ? "bg-[#C97B3D] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}
-                >
-                  {p.nom}
-                </button>
-              ))}
-            </div>
-          )}
-          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim() || (avecParcelle === "oui" && selected.length === 0)}>+ Créer le chantier</ActionButton>
+          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={setAvecParcelle} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
+          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim()}>+ Créer le chantier</ActionButton>
         </Card>
 
         {chantiers.length > 0 && (
@@ -1424,10 +1426,10 @@ function EpandageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
         )}
 
         {chantier && (() => {
-          const avecP = chantier.parcelleIds && chantier.parcelleIds.length > 0;
           const byParcelle = {};
           let total = 0;
-          chantier.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
+          chantier.pesees.forEach((p) => { if (p.parcelleId) byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
+          const avecP = chantier.avecParcelle && Object.keys(byParcelle).length > 0;
           return (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-3">
@@ -1438,7 +1440,7 @@ function EpandageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
               </div>
               {avecP && (
                 <div className="space-y-1.5 mb-3">
-                  {chantier.parcelleIds.map((pid) => {
+                  {Object.keys(byParcelle).map((pid) => {
                     const p = parcelles.find((x) => x.id === pid);
                     return (
                       <div key={pid} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
@@ -1472,8 +1474,8 @@ function EpandageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
   const open = chantiers.filter((c) => c.statut === "ouvert");
   const [activeId, setActiveId] = useState(open[0]?.id || null);
   const chantier = chantiers.find((c) => c.id === activeId);
-  const avecP = chantier?.parcelleIds && chantier.parcelleIds.length > 0;
-  const [parcelleId, setParcelleId] = useState(chantier?.parcelleIds?.[0] || "");
+  const avecP = !!chantier?.avecParcelle;
+  const [parcelleId, setParcelleId] = useState("");
   const [tare, setTare] = useState("");
   const [brut, setBrut] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -1489,6 +1491,7 @@ function EpandageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
       : c));
     setBrut("");
     setTare("");
+    setParcelleId("");
     setConfirm(true);
     setTimeout(() => setConfirm(false), 1500);
   }
@@ -1511,7 +1514,7 @@ function EpandageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
             {open.map((c) => (
               <button
                 key={c.id}
-                onClick={() => { setActiveId(c.id); setParcelleId(c.parcelleIds?.[0] || ""); }}
+                onClick={() => { setActiveId(c.id); setParcelleId(""); }}
                 className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${activeId === c.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}
               >
                 {c.nom}
@@ -1524,20 +1527,7 @@ function EpandageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
           {avecP && (
             <div>
               <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Parcelle</div>
-              <div className="flex flex-wrap gap-2">
-                {chantier.parcelleIds.map((pid) => {
-                  const p = parcelles.find((x) => x.id === pid);
-                  return (
-                    <button
-                      key={pid}
-                      onClick={() => setParcelleId(pid)}
-                      className={`px-4 py-3 rounded-xl text-sm font-bold ${parcelleId === pid ? "bg-[#1C2B1E] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}
-                    >
-                      {p?.nom}
-                    </button>
-                  );
-                })}
-              </div>
+              <ParcelleSearchPicker tone="driver" parcelles={parcelles} value={parcelleId} onChange={setParcelleId} />
             </div>
           )}
 
@@ -1579,17 +1569,15 @@ function MoissonAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const [nomChantier, setNomChantier] = useState("");
   const [cereale, setCereale] = useState("Blé tendre");
   const [avecParcelle, setAvecParcelle] = useState("non");
-  const [selected, setSelected] = useState([]);
   const [openId, setOpenId] = useState(chantiers[0]?.id || null);
   const cereales = ["Blé tendre", "Orge", "Colza", "Tournesol", "Maïs grain"];
 
   function createChantier() {
-    if (!nomChantier.trim() || (avecParcelle === "oui" && selected.length === 0)) return;
-    const c = { id: uid(), nom: nomChantier.trim(), cereale, parcelleIds: avecParcelle === "oui" ? selected : [], statut: "ouvert", pesees: [], createdAt: todayISO() };
+    if (!nomChantier.trim()) return;
+    const c = { id: uid(), nom: nomChantier.trim(), cereale, avecParcelle: avecParcelle === "oui", statut: "ouvert", pesees: [], createdAt: todayISO() };
     setChantiers((cs) => [c, ...cs]);
     setOpenId(c.id);
     setNomChantier("");
-    setSelected([]);
   }
   function closeChantier(id) {
     setChantiers((cs) => cs.map((c) => (c.id === id ? { ...c, statut: "fermé" } : c)));
@@ -1597,15 +1585,17 @@ function MoissonAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const chantier = chantiers.find((c) => c.id === openId);
 
   function exportPdf(c) {
-    const avecP = c.parcelleIds && c.parcelleIds.length > 0;
+    const byParcelle = {};
+    c.pesees.forEach((p) => { if (p.parcelleId) byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; });
+    const parcelleIdsUsed = Object.keys(byParcelle);
+    const avecP = c.avecParcelle && parcelleIdsUsed.length > 0;
     let total = 0;
     let rows = "";
     if (avecP) {
-      const byParcelle = {};
-      c.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
-      rows = c.parcelleIds.map((pid) => {
+      rows = parcelleIdsUsed.map((pid) => {
         const parc = parcelles.find((x) => x.id === pid);
         const t = byParcelle[pid] || 0;
+        total += t;
         const rendement = parc?.surface ? t / 1000 / parc.surface : 0;
         return `<tr><td>${parc?.nom}</td><td>${fmt(parc?.surface || 0, 1)} ha</td><td>${fmt(t, 0)} kg</td><td>${fmt(rendement, 2)} t/ha</td></tr>`;
       }).join("");
@@ -1627,18 +1617,8 @@ function MoissonAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ouvrir un chantier</div>
           <BigInput value={nomChantier} onChange={(e) => setNomChantier(e.target.value)} placeholder="Nom du chantier" className="text-base text-left" />
           <PillChoice tone="admin" columns={2} value={cereale} onChange={setCereale} options={cereales.map((c) => ({ value: c, label: c }))} />
-          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={(v) => { setAvecParcelle(v); setSelected([]); }} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
-          {avecParcelle === "oui" && (
-            <div className="flex flex-wrap gap-2">
-              {parcelles.map((p) => (
-                <button key={p.id} onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
-                  className={`px-4 py-3 rounded-xl text-sm font-bold ${selected.includes(p.id) ? "bg-[#C97B3D] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}>
-                  {p.nom}
-                </button>
-              ))}
-            </div>
-          )}
-          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim() || (avecParcelle === "oui" && selected.length === 0)}>+ Créer le chantier</ActionButton>
+          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={setAvecParcelle} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
+          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim()}>+ Créer le chantier</ActionButton>
         </Card>
 
         {chantiers.length > 0 && (
@@ -1652,9 +1632,10 @@ function MoissonAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
         )}
 
         {chantier && (() => {
-          const avecP = chantier.parcelleIds && chantier.parcelleIds.length > 0;
+          const usedIds = [...new Set(chantier.pesees.map((x) => x.parcelleId).filter(Boolean))];
+          const avecP = chantier.avecParcelle && usedIds.length > 0;
           let total = 0;
-          const lines = avecP ? chantier.parcelleIds.map((pid) => {
+          const lines = avecP ? usedIds.map((pid) => {
             const p = parcelles.find((x) => x.id === pid);
             const pesees = chantier.pesees.filter((x) => x.parcelleId === pid);
             const t = pesees.reduce((s, x) => s + x.net, 0);
@@ -1704,8 +1685,8 @@ function MoissonDriverModule({ chantiers, setChantiers, parcelles, driverName, o
   const open = chantiers.filter((c) => c.statut === "ouvert");
   const [activeId, setActiveId] = useState(open[0]?.id || null);
   const chantier = chantiers.find((c) => c.id === activeId);
-  const avecP = chantier?.parcelleIds && chantier.parcelleIds.length > 0;
-  const [parcelleId, setParcelleId] = useState(chantier?.parcelleIds?.[0] || "");
+  const avecP = !!chantier?.avecParcelle;
+  const [parcelleId, setParcelleId] = useState("");
   const [tare, setTare] = useState("");
   const [brut, setBrut] = useState("");
   const [ps, setPs] = useState("");
@@ -1724,7 +1705,7 @@ function MoissonDriverModule({ chantiers, setChantiers, parcelles, driverName, o
       ? { ...c, pesees: [...c.pesees, { id: uid(), ...(avecP ? { parcelleId } : {}), chauffeur: driverName, tare: parseFloat(tare), brut: parseFloat(brut), net,
           poidsSpecifique: ps ? parseFloat(ps) : null, temperature: temp ? parseFloat(temp) : null, proteine: proteine ? parseFloat(proteine) : null }] }
       : c));
-    setBrut(""); setTare(""); setPs(""); setTemp(""); setProteine("");
+    setBrut(""); setTare(""); setPs(""); setTemp(""); setProteine(""); setParcelleId("");
     setConfirm(true);
     setTimeout(() => setConfirm(false), 1500);
   }
@@ -1745,7 +1726,7 @@ function MoissonDriverModule({ chantiers, setChantiers, parcelles, driverName, o
         {open.length > 1 && (
           <div className="flex gap-2 overflow-x-auto">
             {open.map((c) => (
-              <button key={c.id} onClick={() => { setActiveId(c.id); setParcelleId(c.parcelleIds?.[0] || ""); }}
+              <button key={c.id} onClick={() => { setActiveId(c.id); setParcelleId(""); }}
                 className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${activeId === c.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}>
                 {c.nom}
               </button>
@@ -1757,16 +1738,7 @@ function MoissonDriverModule({ chantiers, setChantiers, parcelles, driverName, o
           {avecP && (
             <div>
               <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Parcelle</div>
-              <div className="flex flex-wrap gap-2">
-                {chantier.parcelleIds.map((pid) => {
-                  const p = parcelles.find((x) => x.id === pid);
-                  return (
-                    <button key={pid} onClick={() => setParcelleId(pid)} className={`px-4 py-3 rounded-xl text-sm font-bold ${parcelleId === pid ? "bg-[#1C2B1E] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}>
-                      {p?.nom}
-                    </button>
-                  );
-                })}
-              </div>
+              <ParcelleSearchPicker tone="driver" parcelles={parcelles} value={parcelleId} onChange={setParcelleId} />
             </div>
           )}
 
@@ -1819,7 +1791,6 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
   const [nomTache, setNomTache] = useState("");
   const [typeBotte, setTypeBotte] = useState("Paille");
   const [avecParcelle, setAvecParcelle] = useState("non");
-  const [selected, setSelected] = useState([]);
   const [openId, setOpenId] = useState(taches[0]?.id || null);
   const [closing, setClosing] = useState(false);
   const [bottesUtilisees, setBottesUtilisees] = useState("");
@@ -1828,12 +1799,11 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
   const stockTotal = stock.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
 
   function createTache() {
-    if (!nomTache.trim() || (avecParcelle === "oui" && selected.length === 0)) return;
-    const t = { id: uid(), nom: nomTache.trim(), typeBotte, parcelleIds: avecParcelle === "oui" ? selected : [], statut: "ouvert", entrees: [], createdAt: todayISO() };
+    if (!nomTache.trim()) return;
+    const t = { id: uid(), nom: nomTache.trim(), typeBotte, avecParcelle: avecParcelle === "oui", statut: "ouvert", entrees: [], createdAt: todayISO() };
     setTaches((ts) => [t, ...ts]);
     setOpenId(t.id);
     setNomTache("");
-    setSelected([]);
   }
   function closeTache() {
     const totalFait = tache.entrees.reduce((s, e) => s + e.nombre, 0);
@@ -1848,13 +1818,14 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
   }
 
   function exportPdf(t) {
-    const avecP = t.parcelleIds && t.parcelleIds.length > 0;
+    const byParcelle = {};
+    t.entrees.forEach((e) => { if (e.parcelleId) byParcelle[e.parcelleId] = (byParcelle[e.parcelleId] || 0) + e.nombre; });
+    const parcelleIdsUsed = Object.keys(byParcelle);
+    const avecP = t.avecParcelle && parcelleIdsUsed.length > 0;
     let total = 0;
     let rows = "";
     if (avecP) {
-      const byParcelle = {};
-      t.entrees.forEach((e) => (byParcelle[e.parcelleId] = (byParcelle[e.parcelleId] || 0) + e.nombre));
-      rows = t.parcelleIds.map((pid) => {
+      rows = parcelleIdsUsed.map((pid) => {
         const p = parcelles.find((x) => x.id === pid);
         return `<tr><td>${p?.nom}</td><td>${byParcelle[pid] || 0} bottes</td></tr>`;
       }).join("");
@@ -1881,18 +1852,8 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ouvrir une tâche</div>
           <BigInput value={nomTache} onChange={(e) => setNomTache(e.target.value)} placeholder="Nom de la tâche" className="text-base text-left" />
           <PillChoice tone="admin" columns={2} value={typeBotte} onChange={setTypeBotte} options={[{ value: "Paille", label: "Paille" }, { value: "Foin", label: "Foin" }]} />
-          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={(v) => { setAvecParcelle(v); setSelected([]); }} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
-          {avecParcelle === "oui" && (
-            <div className="flex flex-wrap gap-2">
-              {parcelles.map((p) => (
-                <button key={p.id} onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
-                  className={`px-4 py-3 rounded-xl text-sm font-bold ${selected.includes(p.id) ? "bg-[#C97B3D] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}>
-                  {p.nom}
-                </button>
-              ))}
-            </div>
-          )}
-          <ActionButton tone="admin" onClick={createTache} disabled={!nomTache.trim() || (avecParcelle === "oui" && selected.length === 0)}>+ Créer la tâche</ActionButton>
+          <PillChoice tone="admin" columns={2} value={avecParcelle} onChange={setAvecParcelle} options={[{ value: "non", label: "Sans parcelle" }, { value: "oui", label: "Avec parcelle" }]} />
+          <ActionButton tone="admin" onClick={createTache} disabled={!nomTache.trim()}>+ Créer la tâche</ActionButton>
         </Card>
 
         {taches.length > 0 && (
@@ -1906,9 +1867,9 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
         )}
 
         {tache && (() => {
-          const avecP = tache.parcelleIds && tache.parcelleIds.length > 0;
           const byParcelle = {};
-          tache.entrees.forEach((e) => (byParcelle[e.parcelleId] = (byParcelle[e.parcelleId] || 0) + e.nombre));
+          tache.entrees.forEach((e) => { if (e.parcelleId) byParcelle[e.parcelleId] = (byParcelle[e.parcelleId] || 0) + e.nombre; });
+          const avecP = tache.avecParcelle && Object.keys(byParcelle).length > 0;
           const total = avecP ? Object.values(byParcelle).reduce((s, n) => s + n, 0) : tache.entrees.reduce((s, e) => s + e.nombre, 0);
           return (
             <Card className="p-5">
@@ -1918,7 +1879,7 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
               </div>
               {avecP && (
                 <div className="space-y-1.5 mb-3">
-                  {tache.parcelleIds.map((pid) => {
+                  {Object.keys(byParcelle).map((pid) => {
                     const p = parcelles.find((x) => x.id === pid);
                     return (
                       <div key={pid} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
@@ -1959,8 +1920,8 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
   const open = taches.filter((t) => t.statut === "ouvert");
   const [activeId, setActiveId] = useState(open[0]?.id || null);
   const tache = taches.find((t) => t.id === activeId);
-  const avecP = tache?.parcelleIds && tache.parcelleIds.length > 0;
-  const [parcelleId, setParcelleId] = useState(tache?.parcelleIds?.[0] || "");
+  const avecP = !!tache?.avecParcelle;
+  const [parcelleId, setParcelleId] = useState("");
   const [nombre, setNombre] = useState("");
   const [confirm, setConfirm] = useState(false);
 
@@ -1973,6 +1934,7 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
       ? { ...t, entrees: [...t.entrees, { id: uid(), ...(avecP ? { parcelleId } : {}), chauffeur: driverName, nombre: parseInt(nombre, 10) }] }
       : t));
     setNombre("");
+    setParcelleId("");
     setConfirm(true);
     setTimeout(() => setConfirm(false), 1500);
   }
@@ -1993,7 +1955,7 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
         {open.length > 1 && (
           <div className="flex gap-2 overflow-x-auto">
             {open.map((t) => (
-              <button key={t.id} onClick={() => { setActiveId(t.id); setParcelleId(t.parcelleIds?.[0] || ""); }}
+              <button key={t.id} onClick={() => { setActiveId(t.id); setParcelleId(""); }}
                 className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${activeId === t.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}>
                 {t.nom}
               </button>
@@ -2005,16 +1967,7 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
           {avecP && (
             <div>
               <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Parcelle</div>
-              <div className="flex flex-wrap gap-2">
-                {tache.parcelleIds.map((pid) => {
-                  const p = parcelles.find((x) => x.id === pid);
-                  return (
-                    <button key={pid} onClick={() => setParcelleId(pid)} className={`px-4 py-3 rounded-xl text-sm font-bold ${parcelleId === pid ? "bg-[#1C2B1E] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}>
-                      {p?.nom}
-                    </button>
-                  );
-                })}
-              </div>
+              <ParcelleSearchPicker tone="driver" parcelles={parcelles} value={parcelleId} onChange={setParcelleId} />
             </div>
           )}
           <div>
