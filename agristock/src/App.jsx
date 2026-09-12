@@ -585,7 +585,7 @@ const ADMIN_MODULES = [
   { id: "epandage", label: "Épandage", emoji: "🚜" },
   { id: "moisson", label: "Moisson", emoji: "🌽" },
   { id: "pressage", label: "Pressage", emoji: "📦" },
-  { id: "phyto", label: "Phytosanitaire", emoji: "🧪" },
+  { id: "stock", label: "Stock", emoji: "🗃️" },
   { id: "facturation", label: "Facturation", emoji: "🧾" },
   { id: "infos", label: "Infos & cours", emoji: "📊" },
 ];
@@ -650,7 +650,7 @@ const DRIVER_MODULES = [
   { id: "epandage", label: "Épandage", emoji: "🚜" },
   { id: "moisson", label: "Moisson", emoji: "🌽" },
   { id: "pressage", label: "Pressage", emoji: "📦" },
-  { id: "phyto", label: "Phytosanitaire", emoji: "🧪" },
+  { id: "stock", label: "Stock", emoji: "🗃️" },
   { id: "stocks", label: "Mes stocks", emoji: "📊" },
   { id: "infos", label: "Infos & cours", emoji: "ℹ️" },
 ];
@@ -747,216 +747,6 @@ function parseParcellesFromText(text) {
     found.push({ id: uid(), nom, surface, type: "cereale", culture: "" });
   });
   return found;
-}
-
-// ---------- OCR de bons de livraison (photo) — utilisé par le module Phytosanitaire ----------
-let _tesseractLoadingPromise = null;
-function loadTesseract() {
-  if (window.Tesseract) return Promise.resolve(window.Tesseract);
-  if (_tesseractLoadingPromise) return _tesseractLoadingPromise;
-  _tesseractLoadingPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js";
-    script.onload = () => resolve(window.Tesseract);
-    script.onerror = () => reject(new Error("Impossible de charger le lecteur de texte."));
-    document.head.appendChild(script);
-  });
-  return _tesseractLoadingPromise;
-}
-
-async function extractImageText(file) {
-  const Tesseract = await loadTesseract();
-  const { data } = await Tesseract.recognize(file, "fra");
-  return data.text || "";
-}
-
-function parseBonLivraisonFromText(text) {
-  const lines = text.split("\n");
-  const found = [];
-  const seen = new Set();
-  const re = /^(.{2,60}?)[\s:.\-–]{0,4}(\d{1,5}(?:[.,]\d{1,2})?)\s*(kg|l|u|unités?|unit(?:é|e)s?)?\s*$/i;
-  lines.forEach((raw) => {
-    const line = raw.trim().replace(/\s{2,}/g, " ");
-    if (!line || line.length < 4) return;
-    const m = line.match(re);
-    if (!m) return;
-    let nom = m[1].trim().replace(/^[-•·\d.\s]+/, "").trim();
-    const quantite = parseFloat(m[2].replace(",", "."));
-    if (!nom || nom.length < 2 || !Number.isFinite(quantite) || quantite <= 0 || quantite > 100000) return;
-    if (/^(total|date|n°|numero|num[ée]ro|bon|client|page)\b/i.test(nom)) return;
-    const key = `${nom.toLowerCase()}|${quantite}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    found.push({ id: uid(), produit: nom, quantite });
-  });
-  return found;
-}
-
-function BonLivraisonImport({ onValider, tone = "admin" }) {
-  const [status, setStatus] = useState("idle");
-  const [error, setError] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [extraites, setExtraites] = useState([]);
-
-  async function handleChange(e) {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    setFileName(file.name || "photo");
-    setStatus("lecture");
-    setError("");
-    try {
-      const text = await extractImageText(file);
-      const trouvees = parseBonLivraisonFromText(text);
-      if (trouvees.length === 0) {
-        setStatus("erreur");
-        setError("Aucun produit reconnu sur cette photo. Vérifiez que le bon est bien net et bien cadré, ou ajoutez les produits à la main.");
-        return;
-      }
-      setExtraites(trouvees);
-      setStatus("revue");
-    } catch (err) {
-      setStatus("erreur");
-      setError("La lecture de la photo a échoué. Réessayez avec une photo plus nette, ou ajoutez les produits à la main.");
-    }
-  }
-
-  function updateExtraite(id, patch) {
-    setExtraites((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-  }
-  function removeExtraite(id) {
-    setExtraites((list) => list.filter((p) => p.id !== id));
-  }
-  function valider() {
-    const valides = extraites.filter((p) => p.produit.trim() && p.quantite > 0);
-    if (valides.length === 0) return;
-    onValider(valides);
-    setExtraites([]);
-    setStatus("idle");
-    setFileName("");
-  }
-  function annuler() {
-    setExtraites([]);
-    setStatus("idle");
-    setFileName("");
-    setError("");
-  }
-
-  const btnTone = tone === "admin" ? "bg-[#C97B3D] active:bg-[#9c5c29]" : "bg-[#1C2B1E] active:bg-[#0e1610]";
-
-  return (
-    <Card className="p-5 space-y-3">
-      <div className="font-extrabold text-sm text-[#1C2B1E]/50">Photo du bon de livraison</div>
-      <p className="text-xs text-[#1C2B1E]/45">Prenez en photo le bon de livraison du fournisseur. L'application essaie de reconnaître chaque produit et sa quantité.</p>
-
-      {status !== "revue" && (
-        <label className={`block w-full text-center text-sm font-bold text-white ${btnTone} rounded-2xl py-4 cursor-pointer`}>
-          {status === "lecture" ? "Lecture de la photo…" : "📷 Prendre ou choisir une photo"}
-          <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleChange} disabled={status === "lecture"} />
-        </label>
-      )}
-
-      {fileName && status !== "revue" && <p className="text-xs text-[#1C2B1E]/45 text-center">{fileName}</p>}
-
-      {status === "erreur" && <p className="text-sm text-[#D6483A] font-bold text-center">{error}</p>}
-
-      {status === "revue" && (
-        <div className="space-y-3">
-          <p className="text-sm font-bold text-[#4A7C3F]">
-            {extraites.length} produit{extraites.length > 1 ? "s" : ""} trouvé{extraites.length > 1 ? "s" : ""} sur la photo. Vérifiez et corrigez si besoin avant de valider.
-          </p>
-          <div className="space-y-2">
-            {extraites.map((p) => (
-              <Card key={p.id} className="p-3 !bg-[#F5F0E6]/50">
-                <div className="flex gap-2">
-                  <BigInput value={p.produit} onChange={(e) => updateExtraite(p.id, { produit: e.target.value })} placeholder="Produit" className="text-sm text-left py-2.5 flex-1" />
-                  <BigInput type="number" step="0.01" inputMode="decimal" value={p.quantite} onChange={(e) => updateExtraite(p.id, { quantite: parseFloat(e.target.value) || 0 })} placeholder="Qté" className="text-sm py-2.5 !w-24" />
-                  <button onClick={() => removeExtraite(p.id)} className="w-10 h-10 rounded-xl bg-[#D6483A]/10 text-[#D6483A] font-bold flex-shrink-0">✕</button>
-                </div>
-              </Card>
-            ))}
-            {extraites.length === 0 && <p className="text-center text-sm text-[#1C2B1E]/40 py-4">Toutes les lignes ont été retirées.</p>}
-          </div>
-          <ActionButton tone={tone} onClick={valider} disabled={extraites.length === 0}>
-            Ajouter {extraites.length} produit{extraites.length > 1 ? "s" : ""} au stock
-          </ActionButton>
-          <button className="block w-full text-center text-sm font-bold text-[#1C2B1E]/40 py-1" onClick={annuler}>Annuler</button>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function StockInventaire({ produitsTheoriques, onValiderInventaire, tone = "admin" }) {
-  const [comptes, setComptes] = useState({});
-  const [valide, setValide] = useState(false);
-
-  function setCompte(produit, val) {
-    setComptes((c) => ({ ...c, [produit]: val }));
-    setValide(false);
-  }
-
-  const lignes = produitsTheoriques.map((p) => {
-    const saisie = comptes[p.produit];
-    const compte = saisie !== undefined && saisie !== "" ? parseFloat(saisie) : null;
-    const ecart = compte !== null ? compte - p.theorique : null;
-    return { ...p, compte, ecart };
-  });
-  const toutesSaisies = lignes.length > 0 && lignes.every((l) => l.compte !== null);
-
-  function validerInventaire() {
-    if (!toutesSaisies) return;
-    onValiderInventaire(lignes);
-    setValide(true);
-  }
-
-  return (
-    <Card className="p-5 space-y-3">
-      <div className="font-extrabold text-sm text-[#1C2B1E]/50">Check des stocks — comptage physique</div>
-      <p className="text-xs text-[#1C2B1E]/45">Comptez chaque produit sur place et entrez la quantité trouvée. L'écart avec le stock théorique s'affiche automatiquement.</p>
-
-      {lignes.length === 0 && <p className="text-center text-sm text-[#1C2B1E]/40 py-6">Aucun produit en stock pour le moment.</p>}
-
-      <div className="space-y-2">
-        {lignes.map((l) => (
-          <Card key={l.produit} className="p-3 !bg-[#F5F0E6]/50">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex-1">
-                <div className="font-bold text-sm">{l.produit}</div>
-                <div className="text-xs text-[#1C2B1E]/45">Stock théorique : {fmt(l.theorique, 1)}</div>
-              </div>
-              <BigInput
-                type="number"
-                step="0.01"
-                inputMode="decimal"
-                value={comptes[l.produit] ?? ""}
-                onChange={(e) => setCompte(l.produit, e.target.value)}
-                placeholder="Compté"
-                className="text-sm py-2.5 !w-24"
-              />
-            </div>
-            {l.compte !== null && l.ecart !== 0 && (
-              <p className={`text-xs font-bold mt-2 ${l.ecart > 0 ? "text-[#4A7C3F]" : "text-[#D6483A]"}`}>
-                Écart : {l.ecart > 0 ? "+" : ""}{fmt(l.ecart, 1)}
-              </p>
-            )}
-            {l.compte !== null && l.ecart === 0 && <p className="text-xs font-bold mt-2 text-[#4A7C3F]">✓ Stock conforme</p>}
-          </Card>
-        ))}
-      </div>
-
-      {lignes.length > 0 && (
-        <>
-          {valide ? (
-            <p className="text-sm font-extrabold text-[#4A7C3F] text-center">✓ Inventaire validé et enregistré</p>
-          ) : (
-            <ActionButton tone={tone} onClick={validerInventaire} disabled={!toutesSaisies}>
-              Valider l'inventaire
-            </ActionButton>
-          )}
-        </>
-      )}
-    </Card>
-  );
 }
 
 function ParcellesModule({ parcelles, setParcelles, onBack }) {
@@ -1134,12 +924,13 @@ function ParcellesModule({ parcelles, setParcelles, onBack }) {
    ============================================================ */
 function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
   const [nomChantier, setNomChantier] = useState("");
+  const [typeEnsilage, setTypeEnsilage] = useState("Herbe");
   const [selected, setSelected] = useState([]);
   const [openId, setOpenId] = useState(chantiers[0]?.id || null);
 
   function createChantier() {
     if (!nomChantier.trim() || selected.length === 0) return;
-    const c = { id: uid(), nom: nomChantier.trim(), parcelleIds: selected, statut: "ouvert", pesees: [], createdAt: todayISO() };
+    const c = { id: uid(), nom: nomChantier.trim(), typeEnsilage, parcelleIds: selected, statut: "ouvert", pesees: [], createdAt: todayISO() };
     setChantiers((cs) => [c, ...cs]);
     setOpenId(c.id);
     setNomChantier("");
@@ -1170,6 +961,7 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
         <Card className="p-5 space-y-3">
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ouvrir un chantier</div>
           <BigInput value={nomChantier} onChange={(e) => setNomChantier(e.target.value)} placeholder="Nom du chantier" className="text-base text-left" />
+          <PillChoice tone="admin" columns={2} value={typeEnsilage} onChange={setTypeEnsilage} options={[{ value: "Herbe", label: "Herbe" }, { value: "Maïs", label: "Maïs" }]} />
           <div className="flex flex-wrap gap-2">
             {parcelles.map((p) => (
               <button
@@ -1205,7 +997,10 @@ function EnsilageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
           return (
             <Card className="p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="font-extrabold text-lg">{chantier.nom}</div>
+                <div>
+                  <div className="font-extrabold text-lg">{chantier.nom}</div>
+                  <div className="text-xs text-[#1C2B1E]/45">{chantier.typeEnsilage}</div>
+                </div>
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${chantier.statut === "ouvert" ? "bg-[#4A7C3F]/15 text-[#4A7C3F]" : "bg-[#1C2B1E]/10"}`}>
                   {chantier.statut.toUpperCase()}
                 </span>
@@ -1800,8 +1595,8 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
     const totalFait = tache.entrees.reduce((s, e) => s + e.nombre, 0);
     const used = parseFloat(bottesUtilisees) || 0;
     setStock((s) => ({ ...s, mouvements: [...s.mouvements,
-      { id: uid(), date: todayISO(), type: "entrée", quantite: totalFait, libelle: `Production — ${tache.nom}` },
-      ...(used > 0 ? [{ id: uid(), date: todayISO(), type: "sortie", quantite: used, libelle: `Consommation — ${tache.nom}` }] : []),
+      { id: uid(), date: todayISO(), type: "entrée", quantite: totalFait, typeBotte: tache.typeBotte, libelle: `Production — ${tache.nom}` },
+      ...(used > 0 ? [{ id: uid(), date: todayISO(), type: "sortie", quantite: used, typeBotte: tache.typeBotte, libelle: `Consommation — ${tache.nom}` }] : []),
     ]}));
     setTaches((ts) => ts.map((x) => (x.id === tache.id ? { ...x, statut: "fermé" } : x)));
     setClosing(false);
@@ -1967,28 +1762,72 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
 }
 
 /* ============================================================
-   MODULE: PHYTOSANITAIRE — CHAUFFEUR (juste la photo du bon de livraison)
+   MODULE: STOCK — récapitulatif ferme (moisson, bottes, ensilage)
    ============================================================ */
-function PhytoDriverModule({ phyto, setPhyto, onBack }) {
-  const [confirme, setConfirme] = useState(false);
+function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, onBack, tone = "admin" }) {
+  const parMoisson = useMemo(() => {
+    const byCereale = {};
+    moissonChantiers.forEach((c) => {
+      const total = c.pesees.reduce((s, p) => s + p.net, 0);
+      byCereale[c.cereale] = (byCereale[c.cereale] || 0) + total;
+    });
+    return Object.entries(byCereale).map(([cereale, total]) => ({ cereale, total }));
+  }, [moissonChantiers]);
+  const totalMoisson = parMoisson.reduce((s, l) => s + l.total, 0);
 
-  function ajouterDepuisBon(produits) {
-    setPhyto((p) => ({ ...p, mouvements: [...p.mouvements, ...produits.map((x) => (
-      { id: uid(), date: todayISO(), type: "entrée", produit: x.produit.trim(), quantite: x.quantite, unite: "unités", libelle: "Bon de livraison (photo)" }
-    ))] }));
-    setConfirme(true);
-    setTimeout(() => setConfirme(false), 2000);
-  }
+  const totalPaille = stockPaille.mouvements
+    .filter((m) => m.typeBotte === "Paille")
+    .reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
+  const totalFoin = stockPaille.mouvements
+    .filter((m) => m.typeBotte === "Foin")
+    .reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
+
+  const totalEnsilageHerbe = ensilageChantiers
+    .filter((c) => c.typeEnsilage === "Herbe")
+    .reduce((s, c) => s + c.pesees.reduce((s2, p) => s2 + p.net, 0), 0);
+  const totalEnsilageMais = ensilageChantiers
+    .filter((c) => c.typeEnsilage === "Maïs")
+    .reduce((s, c) => s + c.pesees.reduce((s2, p) => s2 + p.net, 0), 0);
 
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
-      <ScreenHeader title="Phytosanitaire" onBack={onBack} tone="driver" />
+      <ScreenHeader title="Stock" onBack={onBack} tone={tone} />
       <div className="p-5 space-y-4">
-        {confirme && (
-          <div className="bg-[#4A7C3F]/10 text-[#4A7C3F] rounded-2xl px-4 py-3 text-sm font-bold text-center">✓ Produits ajoutés au stock de la ferme</div>
-        )}
-        <BonLivraisonImport tone="driver" onValider={ajouterDepuisBon} />
-        <p className="text-center text-xs text-[#1C2B1E]/40 px-4">Pour voir le stock complet ou faire l'inventaire, rendez-vous dans « Mes stocks ».</p>
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Moisson — ce qu'il reste</div>
+          {parMoisson.length === 0 ? (
+            <p className="text-center text-sm text-[#1C2B1E]/40 py-4">Aucune moisson enregistrée pour le moment.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {parMoisson.map((l) => (
+                <div key={l.cereale} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
+                  <span>{l.cereale}</span>
+                  <span className="font-bold">{fmt(l.total, 0)} kg</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-between font-extrabold text-lg pt-1">
+            <span>Total moisson</span>
+            <span className="text-[#C97B3D]">{fmt(totalMoisson, 0)} kg</span>
+          </div>
+        </Card>
+
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Pressage — bottes restantes</div>
+          <div className="flex gap-2">
+            <BigStat label="Paille" value={`${fmt(totalPaille, 0)} bottes`} tone={tone} />
+            <BigStat label="Foin" value={`${fmt(totalFoin, 0)} bottes`} tone={tone} />
+          </div>
+        </Card>
+
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ensilage — total silo</div>
+          <div className="flex gap-2">
+            <BigStat label="Herbe" value={`${fmt(totalEnsilageHerbe, 0)} kg`} tone={tone} />
+            <BigStat label="Maïs" value={`${fmt(totalEnsilageMais, 0)} kg`} tone={tone} />
+          </div>
+        </Card>
       </div>
     </div>
   );
@@ -2072,133 +1911,26 @@ function StockAnnuelView({ title, unite, mouvements, soldeActuel, seuilAlerte, r
 }
 
 /* ============================================================
-   MODULE: PHYTOSANITAIRE — ADMIN (plus de prompt(), champ inline)
-   ============================================================ */
-function PhytoModule({ phyto, setPhyto, onBack }) {
-  const [tab, setTab] = useState("produits"); // produits | azote | inventaire
-  const [produit, setProduit] = useState("");
-  const [quantite, setQuantite] = useState("");
-  const [azoteQte, setAzoteQte] = useState("");
-
-  const stockTotal = phyto.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
-  const azoteTotal = (phyto.azoteMouvements || []).reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
-
-  // Stock théorique par produit, pour l'inventaire / check des stocks
-  const stockParProduit = useMemo(() => {
-    const byProduit = {};
-    phyto.mouvements.forEach((m) => {
-      const key = m.produit || "Sans nom";
-      byProduit[key] = (byProduit[key] || 0) + (m.type === "entrée" ? m.quantite : -m.quantite);
-    });
-    return Object.entries(byProduit).map(([produit, theorique]) => ({ produit, theorique }));
-  }, [phyto.mouvements]);
-
-  function addEntree() {
-    if (!produit.trim() || !quantite) return;
-    setPhyto((p) => ({ ...p, mouvements: [...p.mouvements, { id: uid(), date: todayISO(), type: "entrée", produit: produit.trim(), quantite: parseFloat(quantite), unite: "unités" }] }));
-    setProduit(""); setQuantite("");
-  }
-  function addAzote(type) {
-    const q = parseFloat(azoteQte);
-    if (!Number.isFinite(q) || q <= 0) return;
-    setPhyto((p) => ({ ...p, azoteMouvements: [...(p.azoteMouvements || []), { id: uid(), date: todayISO(), type, quantite: q, libelle: type === "entrée" ? "Livraison azote" : "Épandage azote" }] }));
-    setAzoteQte("");
-  }
-  function ajouterDepuisBon(produits) {
-    setPhyto((p) => ({ ...p, mouvements: [...p.mouvements, ...produits.map((x) => (
-      { id: uid(), date: todayISO(), type: "entrée", produit: x.produit.trim(), quantite: x.quantite, unite: "unités", libelle: "Bon de livraison (photo)" }
-    ))] }));
-  }
-  function enregistrerInventaire(lignes) {
-    // Crée un mouvement de régularisation pour chaque écart constaté (positif = entrée, négatif = sortie)
-    const regularisations = lignes
-      .filter((l) => l.ecart !== 0)
-      .map((l) => ({
-        id: uid(),
-        date: todayISO(),
-        type: l.ecart > 0 ? "entrée" : "sortie",
-        produit: l.produit,
-        quantite: Math.abs(l.ecart),
-        unite: "unités",
-        libelle: "Régularisation inventaire",
-      }));
-    if (regularisations.length > 0) {
-      setPhyto((p) => ({ ...p, mouvements: [...p.mouvements, ...regularisations] }));
-    }
-  }
-
-  return (
-    <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
-      <ScreenHeader title="Phytosanitaire" onBack={onBack} tone="admin" />
-      <div className="p-5 space-y-4">
-        <PillChoice tone="admin" columns={3} value={tab} onChange={setTab} options={[{ value: "produits", label: "Produits" }, { value: "azote", label: "Azote" }, { value: "inventaire", label: "Inventaire" }]} />
-
-        {tab === "produits" && (
-          <>
-            <Card className="p-5 space-y-3">
-              <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ajouter une entrée à la main</div>
-              <BigInput value={produit} onChange={(e) => setProduit(e.target.value)} placeholder="Nom du produit" className="text-base text-left" />
-              <BigInput type="number" inputMode="decimal" value={quantite} onChange={(e) => setQuantite(e.target.value)} placeholder="Quantité" />
-              <ActionButton tone="admin" onClick={addEntree} disabled={!produit.trim() || !quantite}>+ Enregistrer</ActionButton>
-            </Card>
-            <BonLivraisonImport tone="admin" onValider={ajouterDepuisBon} />
-            <StockAnnuelView title="Stock phytosanitaire" unite="unités" mouvements={phyto.mouvements} soldeActuel={stockTotal} seuilAlerte={null} />
-          </>
-        )}
-
-        {tab === "azote" && (
-          <>
-            <Card className="p-5 space-y-3">
-              <BigInput type="number" inputMode="decimal" value={azoteQte} onChange={(e) => setAzoteQte(e.target.value)} placeholder="Quantité (L)" />
-              <div className="grid grid-cols-2 gap-2">
-                <ActionButton tone="primary" size="md" onClick={() => addAzote("entrée")} disabled={!azoteQte}>+ Livraison</ActionButton>
-                <ActionButton tone="danger" size="md" onClick={() => addAzote("sortie")} disabled={!azoteQte}>− Épandage</ActionButton>
-              </div>
-            </Card>
-            <Card className="p-4 flex items-center justify-between">
-              <span className="text-sm font-bold">Seuil d'alerte</span>
-              <BigInput type="number" inputMode="decimal" value={phyto.azoteSeuil} onChange={(e) => setPhyto((p) => ({ ...p, azoteSeuil: parseFloat(e.target.value) || 0 }))} className="!w-28 text-base py-2" />
-            </Card>
-            {azoteTotal <= phyto.azoteSeuil && (
-              <div className="bg-[#D6483A]/10 text-[#D6483A] rounded-2xl px-4 py-3 text-sm font-bold text-center">⚠ Niveau d'azote sous le seuil</div>
-            )}
-            <StockAnnuelView title="Azote citerne" unite="L" mouvements={phyto.azoteMouvements || []} soldeActuel={azoteTotal} seuilAlerte={phyto.azoteSeuil} />
-          </>
-        )}
-
-        {tab === "inventaire" && (
-          <StockInventaire tone="admin" produitsTheoriques={stockParProduit} onValiderInventaire={enregistrerInventaire} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
    MODULE: FACTURATION (lignes simplifiées, TVA par défaut 20%)
    ============================================================ */
 const TVA_TAUX = [{ l: "20%", v: 0.2 }, { l: "10%", v: 0.1 }, { l: "5,5%", v: 0.055 }, { l: "0%", v: 0 }];
 
-function stockSources(stockPaille, phyto) {
+function stockSources(stockPaille) {
   const pailleTotal = stockPaille.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
-  const phytoTotal = phyto.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
-  const azoteTotal = (phyto.azoteMouvements || []).reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
   return [
     { key: "paille", label: "Paille / foin", unite: "bottes", disponible: pailleTotal },
-    { key: "phyto", label: "Phytosanitaire", unite: "unités", disponible: phytoTotal },
-    { key: "azote", label: "Azote citerne", unite: "L", disponible: azoteTotal },
   ];
 }
 function emptyLigne() { return { id: uid(), designation: "", quantite: 1, prixUnitaire: 0, tva: 0.2, lieAuStock: "" }; }
 
-function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factures, setFactures, onBack }) {
+function FacturationModule({ stockPaille, setStockPaille, factures, setFactures, onBack }) {
   const [clientType, setClientType] = useState("particulier"); // particulier | professionnel
   const [client, setClient] = useState("");
   const [siren, setSiren] = useState("");
   const [numTva, setNumTva] = useState("");
   const [lignes, setLignes] = useState([emptyLigne()]);
   const [openId, setOpenId] = useState(factures[0]?.id || null);
-  const sources = stockSources(stockPaille, phyto);
+  const sources = stockSources(stockPaille);
 
   function updateLigne(id, patch) { setLignes((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l))); }
   const totaux = useMemo(() => {
@@ -2219,12 +1951,6 @@ function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factu
     const dateFacture = todayISO();
     setStockPaille((s) => ({ ...s, mouvements: [...s.mouvements, ...lignes.filter((l) => l.lieAuStock === "paille" && l.designation).map((l) =>
       ({ id: uid(), date: dateFacture, type: "sortie", quantite: parseFloat(l.quantite) || 0, libelle: `Facture ${numero} — ${client}` }))] }));
-    setPhyto((p) => ({ ...p,
-      mouvements: [...p.mouvements, ...lignes.filter((l) => l.lieAuStock === "phyto" && l.designation).map((l) =>
-        ({ id: uid(), date: dateFacture, type: "sortie", quantite: parseFloat(l.quantite) || 0, produit: l.designation, unite: "unités" }))],
-      azoteMouvements: [...(p.azoteMouvements || []), ...lignes.filter((l) => l.lieAuStock === "azote" && l.designation).map((l) =>
-        ({ id: uid(), date: dateFacture, type: "sortie", quantite: parseFloat(l.quantite) || 0, libelle: `Facture ${numero}` }))],
-    }));
     const facture = {
       id: uid(), numero, date: dateFacture,
       clientType, client: client.trim(),
@@ -2415,7 +2141,7 @@ function InfosModule({ infos, setInfos, readOnly, onBack, tone }) {
 /* ============================================================
    CHAUFFEUR: MES STOCKS — historique perso + stocks ferme
    ============================================================ */
-function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageChantiers, moissonChantiers, pressageTaches, stockPaille, phyto, onBack }) {
+function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageChantiers, moissonChantiers, pressageTaches, stockPaille, onBack }) {
   const [section, setSection] = useState("perso");
 
   const mesPeseesEnsilage = useMemo(() => {
@@ -2459,8 +2185,6 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageCh
   const totalMoisson = mesPeseesMoisson.reduce((s, m) => s + m.quantite, 0);
   const totalBottes = mesBottes.reduce((s, m) => s + m.quantite, 0);
   const stockPailleTotal = stockPaille.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
-  const stockPhytoTotal = phyto.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
-  const stockAzoteTotal = (phyto.azoteMouvements || []).reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
 
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
@@ -2474,8 +2198,6 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageCh
           options={[
             { value: "perso", label: "Mon activité" },
             { value: "paille", label: "Paille/foin" },
-            { value: "phyto", label: "Phyto" },
-            { value: "azote", label: "Azote" },
           ]}
         />
 
@@ -2497,8 +2219,6 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageCh
           </div>
         )}
         {section === "paille" && <StockAnnuelView title="Paille / foin (ferme)" unite="bottes" mouvements={stockPaille.mouvements} soldeActuel={stockPailleTotal} seuilAlerte={stockPaille.seuilAlerte} readOnly />}
-        {section === "phyto" && <StockAnnuelView title="Phytosanitaire (ferme)" unite="unités" mouvements={phyto.mouvements} soldeActuel={stockPhytoTotal} seuilAlerte={null} readOnly />}
-        {section === "azote" && <StockAnnuelView title="Azote citerne (ferme)" unite="L" mouvements={phyto.azoteMouvements || []} soldeActuel={stockAzoteTotal} seuilAlerte={phyto.azoteSeuil} readOnly />}
       </div>
     </div>
   );
@@ -2545,7 +2265,6 @@ export default function App() {
   const [moissonChantiers, setMoissonChantiers] = useState([]);
   const [pressageTaches, setPressageTaches] = useState([]);
   const [stockPaille, setStockPaille] = useState({ seuilAlerte: 500, mouvements: [] });
-  const [phyto, setPhyto] = useState({ azoteSeuil: 500, azoteMouvements: [], mouvements: [] });
   const [factures, setFactures] = useState([]);
   const [infos, setInfos] = useState({ cours: COURS_DEFAUT, entraide: [] });
 
@@ -2611,8 +2330,8 @@ export default function App() {
     if (adminModule === "epandage" && currentAccount?.pontBascule) return <EpandageAdminModule parcelles={parcelles} chantiers={epandageChantiers} setChantiers={setEpandageChantiers} onBack={back} />;
     if (adminModule === "moisson") return <MoissonAdminModule parcelles={parcelles} chantiers={moissonChantiers} setChantiers={setMoissonChantiers} onBack={back} />;
     if (adminModule === "pressage") return <PressageAdminModule parcelles={parcelles} taches={pressageTaches} setTaches={setPressageTaches} stock={stockPaille} setStock={setStockPaille} onBack={back} />;
-    if (adminModule === "phyto") return <PhytoModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
-    if (adminModule === "facturation") return <FacturationModule stockPaille={stockPaille} setStockPaille={setStockPaille} phyto={phyto} setPhyto={setPhyto} factures={factures} setFactures={setFactures} onBack={back} />;
+    if (adminModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} onBack={back} tone="admin" />;
+    if (adminModule === "facturation") return <FacturationModule stockPaille={stockPaille} setStockPaille={setStockPaille} factures={factures} setFactures={setFactures} onBack={back} />;
     if (adminModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly={false} onBack={back} tone="admin" />;
     if (adminModule === "parametres") return <ParametresModule pontBascule={currentAccount?.pontBascule} onChangePontBascule={updatePontBascule} onBack={back} />;
   }
@@ -2624,8 +2343,8 @@ export default function App() {
     if (driverModule === "epandage" && currentAccount?.pontBascule) return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "moisson") return <MoissonDriverModule chantiers={moissonChantiers} setChantiers={setMoissonChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "pressage") return <PressageDriverModule taches={pressageTaches} setTaches={setPressageTaches} parcelles={parcelles} driverName={driverName} onBack={back} />;
-    if (driverModule === "phyto") return <PhytoDriverModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
-    if (driverModule === "stocks") return <DriverStocksView driverName={driverName} parcelles={parcelles} ensilageChantiers={ensilageChantiers} epandageChantiers={epandageChantiers} moissonChantiers={moissonChantiers} pressageTaches={pressageTaches} stockPaille={stockPaille} phyto={phyto} onBack={back} />;
+    if (driverModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} onBack={back} tone="driver" />;
+    if (driverModule === "stocks") return <DriverStocksView driverName={driverName} parcelles={parcelles} ensilageChantiers={ensilageChantiers} epandageChantiers={epandageChantiers} moissonChantiers={moissonChantiers} pressageTaches={pressageTaches} stockPaille={stockPaille} onBack={back} />;
     if (driverModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly onBack={back} tone="driver" />;
   }
 
