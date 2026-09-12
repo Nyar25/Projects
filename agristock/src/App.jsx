@@ -542,6 +542,7 @@ function DriverNameForm({ onSubmit, onCancel }) {
 const ADMIN_MODULES = [
   { id: "parcelles", label: "Parcelles", emoji: "🌾" },
   { id: "ensilage", label: "Ensilage", emoji: "🚜" },
+  { id: "epandage", label: "Épandage", emoji: "🚜" },
   { id: "moisson", label: "Moisson", emoji: "🌽" },
   { id: "pressage", label: "Pressage", emoji: "📦" },
   { id: "phyto", label: "Phytosanitaire", emoji: "🧪" },
@@ -582,6 +583,7 @@ function AdminHome({ onOpen, onLogout }) {
    ============================================================ */
 const DRIVER_MODULES = [
   { id: "ensilage", label: "Ensilage", emoji: "🚜" },
+  { id: "epandage", label: "Épandage", emoji: "🚜" },
   { id: "moisson", label: "Moisson", emoji: "🌽" },
   { id: "pressage", label: "Pressage", emoji: "📦" },
   { id: "phyto", label: "Phytosanitaire", emoji: "🧪" },
@@ -1197,6 +1199,218 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
       <ScreenHeader title="Ensilage" onBack={onBack} tone="driver" />
+      <div className="p-5 space-y-4">
+        {open.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto">
+            {open.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => { setActiveId(c.id); setParcelleId(c.parcelleIds[0] || ""); }}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${activeId === c.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}
+              >
+                {c.nom}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Card className="p-5 space-y-4">
+          <div>
+            <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Parcelle</div>
+            <div className="flex flex-wrap gap-2">
+              {chantier?.parcelleIds.map((pid) => {
+                const p = parcelles.find((x) => x.id === pid);
+                return (
+                  <button
+                    key={pid}
+                    onClick={() => setParcelleId(pid)}
+                    className={`px-4 py-3 rounded-xl text-sm font-bold ${parcelleId === pid ? "bg-[#1C2B1E] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}
+                  >
+                    {p?.nom}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Tare (kg)</div>
+            <BigInput type="number" inputMode="decimal" value={tare} onChange={(e) => setTare(e.target.value)} placeholder="0" />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-[#1C2B1E]/50 mb-2">Poids en charge (kg)</div>
+            <BigInput type="number" inputMode="decimal" value={brut} onChange={(e) => setBrut(e.target.value)} placeholder="0" />
+          </div>
+
+          {net > 0 && (
+            <div className="text-center bg-[#4A7C3F]/10 rounded-2xl py-3">
+              <div className="text-xs font-bold text-[#4A7C3F]/70 uppercase">Poids net</div>
+              <div className="text-3xl font-extrabold text-[#4A7C3F]">{fmt(net, 0)} kg</div>
+            </div>
+          )}
+
+          <ActionButton tone="driver" onClick={valider} disabled={!tare || !brut}>
+            {confirm ? "✓ Enregistré !" : "Valider la pesée"}
+          </ActionButton>
+        </Card>
+
+        <Card className="p-5 bg-[#1C2B1E] text-white text-center">
+          <div className="text-sm opacity-60">Mon total aujourd'hui</div>
+          <div className="text-4xl font-extrabold mt-1">{fmt(totalMine, 0)} kg</div>
+          <div className="text-xs opacity-45 mt-1">{mine.length} pesée(s)</div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   MODULE: ÉPANDAGE — ADMIN (création toujours visible)
+   ============================================================ */
+function EpandageAdminModule({ parcelles, chantiers, setChantiers, onBack }) {
+  const [nomChantier, setNomChantier] = useState("");
+  const [selected, setSelected] = useState([]);
+  const [openId, setOpenId] = useState(chantiers[0]?.id || null);
+
+  function createChantier() {
+    if (!nomChantier.trim() || selected.length === 0) return;
+    const c = { id: uid(), nom: nomChantier.trim(), parcelleIds: selected, statut: "ouvert", pesees: [], createdAt: todayISO() };
+    setChantiers((cs) => [c, ...cs]);
+    setOpenId(c.id);
+    setNomChantier("");
+    setSelected([]);
+  }
+  function closeChantier(id) {
+    setChantiers((cs) => cs.map((c) => (c.id === id ? { ...c, statut: "fermé" } : c)));
+  }
+  const chantier = chantiers.find((c) => c.id === openId);
+
+  function exportPdf(c) {
+    const byParcelle = {};
+    let total = 0;
+    c.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
+    const rows = c.parcelleIds.map((pid) => {
+      const parc = parcelles.find((x) => x.id === pid);
+      return `<tr><td>${parc?.nom}</td><td>${fmt(parc?.surface || 0, 1)} ha</td><td>${fmt(byParcelle[pid] || 0, 0)} kg</td></tr>`;
+    }).join("");
+    openPdfWindow(`Chantier épandage — ${c.nom}`,
+      `<div class="meta">Date : ${c.createdAt}</div><table><thead><tr><th>Parcelle</th><th>Surface</th><th>Poids net</th></tr></thead><tbody>${rows}</tbody>
+       <tfoot><tr class="total-row"><td colspan="2">TOTAL ÉPANDU</td><td>${fmt(total, 0)} kg</td></tr></tfoot></table>`);
+  }
+
+  return (
+    <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
+      <ScreenHeader title="Épandage" onBack={onBack} tone="admin" />
+      <div className="p-5 space-y-4">
+        <Card className="p-5 space-y-3">
+          <div className="font-extrabold text-sm text-[#1C2B1E]/50">Ouvrir un chantier</div>
+          <BigInput value={nomChantier} onChange={(e) => setNomChantier(e.target.value)} placeholder="Nom du chantier" className="text-base text-left" />
+          <div className="flex flex-wrap gap-2">
+            {parcelles.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
+                className={`px-4 py-3 rounded-xl text-sm font-bold ${selected.includes(p.id) ? "bg-[#C97B3D] text-white" : "bg-[#F5F0E6] text-[#1C2B1E]/70"}`}
+              >
+                {p.nom}
+              </button>
+            ))}
+          </div>
+          <ActionButton tone="admin" onClick={createChantier} disabled={!nomChantier.trim() || selected.length === 0}>+ Créer le chantier</ActionButton>
+        </Card>
+
+        {chantiers.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {chantiers.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setOpenId(c.id)}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap ${openId === c.id ? "bg-[#1C2B1E] text-white" : "bg-white text-[#1C2B1E]/60"}`}
+              >
+                {c.nom} {c.statut === "fermé" && "✓"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {chantier && (() => {
+          const byParcelle = {};
+          let total = 0;
+          chantier.pesees.forEach((p) => { byParcelle[p.parcelleId] = (byParcelle[p.parcelleId] || 0) + p.net; total += p.net; });
+          return (
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-extrabold text-lg">{chantier.nom}</div>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${chantier.statut === "ouvert" ? "bg-[#4A7C3F]/15 text-[#4A7C3F]" : "bg-[#1C2B1E]/10"}`}>
+                  {chantier.statut.toUpperCase()}
+                </span>
+              </div>
+              <div className="space-y-1.5 mb-3">
+                {chantier.parcelleIds.map((pid) => {
+                  const p = parcelles.find((x) => x.id === pid);
+                  return (
+                    <div key={pid} className="flex justify-between text-sm py-1 border-b border-[#1C2B1E]/5">
+                      <span>{p?.nom}</span>
+                      <span className="font-bold">{fmt(byParcelle[pid] || 0, 0)} kg</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between font-extrabold text-xl mb-4">
+                <span>Total épandu</span>
+                <span className="text-[#C97B3D]">{fmt(total, 0)} kg</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <ActionButton tone="ghost" size="md" onClick={() => exportPdf(chantier)}>📄 Export PDF</ActionButton>
+                {chantier.statut === "ouvert" && <ActionButton tone="ghost" size="md" onClick={() => closeChantier(chantier.id)}>Fermer</ActionButton>}
+              </div>
+            </Card>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   MODULE: ÉPANDAGE — CHAUFFEUR (tare + poids + valider, rien d'autre)
+   ============================================================ */
+function EpandageDriverModule({ chantiers, setChantiers, parcelles, driverName, onBack }) {
+  const open = chantiers.filter((c) => c.statut === "ouvert");
+  const [activeId, setActiveId] = useState(open[0]?.id || null);
+  const chantier = chantiers.find((c) => c.id === activeId);
+  const [parcelleId, setParcelleId] = useState(chantier?.parcelleIds[0] || "");
+  const [tare, setTare] = useState("");
+  const [brut, setBrut] = useState("");
+  const [confirm, setConfirm] = useState(false);
+
+  const mine = (chantier?.pesees || []).filter((p) => p.chauffeur === driverName);
+  const totalMine = mine.reduce((s, p) => s + p.net, 0);
+  const net = tare && brut ? Math.max(0, parseFloat(brut) - parseFloat(tare)) : 0;
+
+  function valider() {
+    if (!tare || !brut || !chantier || !parcelleId) return;
+    setChantiers((cs) => cs.map((c) => c.id === chantier.id
+      ? { ...c, pesees: [...c.pesees, { id: uid(), parcelleId, chauffeur: driverName, tare: parseFloat(tare), brut: parseFloat(brut), net }] }
+      : c));
+    setBrut("");
+    setTare("");
+    setConfirm(true);
+    setTimeout(() => setConfirm(false), 1500);
+  }
+
+  if (open.length === 0) {
+    return (
+      <div className="screen-in min-h-screen bg-[#F5F0E6]">
+        <ScreenHeader title="Épandage" onBack={onBack} tone="driver" />
+        <p className="text-center text-base text-[#1C2B1E]/45 py-16 px-6">Aucun chantier ouvert pour le moment. Demandez à l'administrateur d'en ouvrir un.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="screen-in min-h-screen bg-[#F5F0E6] pb-10">
+      <ScreenHeader title="Épandage" onBack={onBack} tone="driver" />
       <div className="p-5 space-y-4">
         {open.length > 1 && (
           <div className="flex gap-2 overflow-x-auto">
@@ -2078,7 +2292,7 @@ function InfosModule({ infos, setInfos, readOnly, onBack, tone }) {
 /* ============================================================
    CHAUFFEUR: MES STOCKS — historique perso + stocks ferme
    ============================================================ */
-function DriverStocksView({ driverName, parcelles, ensilageChantiers, moissonChantiers, pressageTaches, stockPaille, phyto, onBack }) {
+function DriverStocksView({ driverName, parcelles, ensilageChantiers, epandageChantiers, moissonChantiers, pressageTaches, stockPaille, phyto, onBack }) {
   const [section, setSection] = useState("perso");
 
   const mesPeseesEnsilage = useMemo(() => {
@@ -2089,6 +2303,15 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, moissonCha
     }));
     return out;
   }, [ensilageChantiers, parcelles, driverName]);
+
+  const mesPeseesEpandage = useMemo(() => {
+    const out = [];
+    epandageChantiers.forEach((c) => c.pesees.filter((p) => p.chauffeur === driverName).forEach((p) => {
+      const parc = parcelles.find((x) => x.id === p.parcelleId);
+      out.push({ id: p.id, date: c.createdAt, type: "entrée", quantite: p.net, unite: "kg", libelle: `${c.nom} (${parc?.nom || "?"})` });
+    }));
+    return out;
+  }, [epandageChantiers, parcelles, driverName]);
 
   const mesPeseesMoisson = useMemo(() => {
     const out = [];
@@ -2109,6 +2332,7 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, moissonCha
   }, [pressageTaches, parcelles, driverName]);
 
   const totalEnsilage = mesPeseesEnsilage.reduce((s, m) => s + m.quantite, 0);
+  const totalEpandage = mesPeseesEpandage.reduce((s, m) => s + m.quantite, 0);
   const totalMoisson = mesPeseesMoisson.reduce((s, m) => s + m.quantite, 0);
   const totalBottes = mesBottes.reduce((s, m) => s + m.quantite, 0);
   const stockPailleTotal = stockPaille.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
@@ -2136,13 +2360,15 @@ function DriverStocksView({ driverName, parcelles, ensilageChantiers, moissonCha
           <div className="space-y-4">
             <div className="flex gap-2">
               <BigStat label="Ensilage" value={`${fmt(totalEnsilage, 0)} kg`} tone="field" />
+              <BigStat label="Épandage" value={`${fmt(totalEpandage, 0)} kg`} tone="field" />
               <BigStat label="Moisson" value={`${fmt(totalMoisson, 0)} kg`} tone="field" />
               <BigStat label="Bottes" value={totalBottes} tone="field" />
             </div>
             {mesPeseesEnsilage.length > 0 && <StockAnnuelView title="Ensilage" unite="kg" mouvements={mesPeseesEnsilage} soldeActuel={totalEnsilage} seuilAlerte={null} readOnly />}
+            {mesPeseesEpandage.length > 0 && <StockAnnuelView title="Épandage" unite="kg" mouvements={mesPeseesEpandage} soldeActuel={totalEpandage} seuilAlerte={null} readOnly />}
             {mesPeseesMoisson.length > 0 && <StockAnnuelView title="Moisson" unite="kg" mouvements={mesPeseesMoisson} soldeActuel={totalMoisson} seuilAlerte={null} readOnly />}
             {mesBottes.length > 0 && <StockAnnuelView title="Pressage" unite="bottes" mouvements={mesBottes} soldeActuel={totalBottes} seuilAlerte={null} readOnly />}
-            {mesPeseesEnsilage.length === 0 && mesPeseesMoisson.length === 0 && mesBottes.length === 0 && (
+            {mesPeseesEnsilage.length === 0 && mesPeseesEpandage.length === 0 && mesPeseesMoisson.length === 0 && mesBottes.length === 0 && (
               <p className="text-center text-sm text-[#1C2B1E]/40 py-10">Aucune activité enregistrée pour le moment.</p>
             )}
           </div>
@@ -2166,6 +2392,7 @@ export default function App() {
 
   const [parcelles, setParcelles] = useState(initialParcelles);
   const [ensilageChantiers, setEnsilageChantiers] = useState([]);
+  const [epandageChantiers, setEpandageChantiers] = useState([]);
   const [moissonChantiers, setMoissonChantiers] = useState([]);
   const [pressageTaches, setPressageTaches] = useState([]);
   const [stockPaille, setStockPaille] = useState({ seuilAlerte: 500, mouvements: [] });
@@ -2214,6 +2441,7 @@ export default function App() {
     const back = () => setAdminModule(null);
     if (adminModule === "parcelles") return <ParcellesModule parcelles={parcelles} setParcelles={setParcelles} onBack={back} />;
     if (adminModule === "ensilage") return <EnsilageAdminModule parcelles={parcelles} chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} onBack={back} />;
+    if (adminModule === "epandage") return <EpandageAdminModule parcelles={parcelles} chantiers={epandageChantiers} setChantiers={setEpandageChantiers} onBack={back} />;
     if (adminModule === "moisson") return <MoissonAdminModule parcelles={parcelles} chantiers={moissonChantiers} setChantiers={setMoissonChantiers} onBack={back} />;
     if (adminModule === "pressage") return <PressageAdminModule parcelles={parcelles} taches={pressageTaches} setTaches={setPressageTaches} stock={stockPaille} setStock={setStockPaille} onBack={back} />;
     if (adminModule === "phyto") return <PhytoModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
@@ -2225,10 +2453,11 @@ export default function App() {
     if (!driverModule) return <DriverHome driverName={driverName} onOpen={setDriverModule} onLogout={logout} />;
     const back = () => setDriverModule(null);
     if (driverModule === "ensilage") return <EnsilageDriverModule chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
+    if (driverModule === "epandage") return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "moisson") return <MoissonDriverModule chantiers={moissonChantiers} setChantiers={setMoissonChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "pressage") return <PressageDriverModule taches={pressageTaches} setTaches={setPressageTaches} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "phyto") return <PhytoDriverModule phyto={phyto} setPhyto={setPhyto} onBack={back} />;
-    if (driverModule === "stocks") return <DriverStocksView driverName={driverName} parcelles={parcelles} ensilageChantiers={ensilageChantiers} moissonChantiers={moissonChantiers} pressageTaches={pressageTaches} stockPaille={stockPaille} phyto={phyto} onBack={back} />;
+    if (driverModule === "stocks") return <DriverStocksView driverName={driverName} parcelles={parcelles} ensilageChantiers={ensilageChantiers} epandageChantiers={epandageChantiers} moissonChantiers={moissonChantiers} pressageTaches={pressageTaches} stockPaille={stockPaille} phyto={phyto} onBack={back} />;
     if (driverModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly onBack={back} tone="driver" />;
   }
 
