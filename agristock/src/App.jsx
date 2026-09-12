@@ -971,10 +971,10 @@ function ParcellesModule({ parcelles, setParcelles, onBack }) {
             <BigInput type="number" step="0.01" inputMode="decimal" value={surface} onChange={(e) => setSurface(e.target.value)} placeholder="Surface (ha)" />
             <PillChoice
               tone="admin"
-              columns={3}
+              columns={2}
               value={type}
               onChange={setType}
-              options={[{ value: "cereale", label: "Céréale" }, { value: "ensilage", label: "Ensilage" }, { value: "herbe", label: "Herbe" }]}
+              options={[{ value: "cereale", label: "Champ" }, { value: "herbe", label: "Prairie" }]}
             />
             <ActionButton tone="admin" onClick={addParcelle} disabled={!nom.trim() || !surface}>+ Ajouter</ActionButton>
           </Card>
@@ -1015,10 +1015,10 @@ function ParcellesModule({ parcelles, setParcelles, onBack }) {
                       </div>
                       <PillChoice
                         tone="admin"
-                        columns={3}
+                        columns={2}
                         value={p.type}
                         onChange={(t) => updateExtraite(p.id, { type: t })}
-                        options={[{ value: "cereale", label: "Céréale" }, { value: "ensilage", label: "Ensilage" }, { value: "herbe", label: "Herbe" }]}
+                        options={[{ value: "cereale", label: "Champ" }, { value: "herbe", label: "Prairie" }]}
                       />
                     </Card>
                   ))}
@@ -1038,7 +1038,7 @@ function ParcellesModule({ parcelles, setParcelles, onBack }) {
             <Card key={p.id} className="p-4 flex items-center justify-between">
               <div>
                 <div className="font-bold">{p.nom}</div>
-                <div className="text-sm text-[#1C2B1E]/50">{fmt(p.surface, 1)} ha · {p.culture || (p.type === "ensilage" ? "Ensilage" : "Céréale")}</div>
+                <div className="text-sm text-[#1C2B1E]/50">{fmt(p.surface, 1)} ha · {p.culture || (p.type === "herbe" ? "Prairie" : "Champ")}</div>
               </div>
               <button onClick={() => removeParcelle(p.id)} className="w-9 h-9 rounded-full bg-[#D6483A]/10 text-[#D6483A] font-bold flex items-center justify-center active:bg-[#D6483A]/20">✕</button>
             </Card>
