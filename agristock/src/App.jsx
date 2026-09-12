@@ -789,7 +789,7 @@ function BonLivraisonImport({ onValider, tone = "admin" }) {
           </p>
           <div className="space-y-2">
             {extraites.map((p) => (
-              <Card key={p.id} className="p-3 bg-[#F5F0E6]/50">
+              <Card key={p.id} className="p-3 !bg-[#F5F0E6]/50">
                 <div className="flex gap-2">
                   <BigInput value={p.produit} onChange={(e) => updateExtraite(p.id, { produit: e.target.value })} placeholder="Produit" className="text-sm text-left py-2.5 flex-1" />
                   <BigInput type="number" step="0.01" inputMode="decimal" value={p.quantite} onChange={(e) => updateExtraite(p.id, { quantite: parseFloat(e.target.value) || 0 })} placeholder="Qté" className="text-sm py-2.5 !w-24" />
@@ -841,7 +841,7 @@ function StockInventaire({ produitsTheoriques, onValiderInventaire, tone = "admi
 
       <div className="space-y-2">
         {lignes.map((l) => (
-          <Card key={l.produit} className="p-3 bg-[#F5F0E6]/50">
+          <Card key={l.produit} className="p-3 !bg-[#F5F0E6]/50">
             <div className="flex items-center justify-between gap-2">
               <div className="flex-1">
                 <div className="font-bold text-sm">{l.produit}</div>
@@ -1009,7 +1009,7 @@ function ParcellesModule({ parcelles, setParcelles, onBack }) {
                 </p>
                 <div className="space-y-2">
                   {extraites.map((p) => (
-                    <Card key={p.id} className="p-3 space-y-2 bg-[#F5F0E6]/50">
+                    <Card key={p.id} className="p-3 space-y-2 !bg-[#F5F0E6]/50">
                       <div className="flex gap-2">
                         <BigInput value={p.nom} onChange={(e) => updateExtraite(p.id, { nom: e.target.value })} placeholder="Nom" className="text-sm text-left py-2.5 flex-1" />
                         <BigInput type="number" step="0.01" inputMode="decimal" value={p.surface} onChange={(e) => updateExtraite(p.id, { surface: parseFloat(e.target.value) || 0 })} placeholder="ha" className="text-sm py-2.5 !w-24" />
@@ -1254,7 +1254,7 @@ function EnsilageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
           </ActionButton>
         </Card>
 
-        <Card className="p-5 bg-[#1C2B1E] text-white text-center">
+        <Card className="p-5 !bg-[#1C2B1E] text-white text-center">
           <div className="text-sm opacity-60">Mon total aujourd'hui</div>
           <div className="text-4xl font-extrabold mt-1">{fmt(totalMine, 0)} kg</div>
           <div className="text-xs opacity-45 mt-1">{mine.length} pesée(s)</div>
@@ -1466,7 +1466,7 @@ function EpandageDriverModule({ chantiers, setChantiers, parcelles, driverName, 
           </ActionButton>
         </Card>
 
-        <Card className="p-5 bg-[#1C2B1E] text-white text-center">
+        <Card className="p-5 !bg-[#1C2B1E] text-white text-center">
           <div className="text-sm opacity-60">Mon total aujourd'hui</div>
           <div className="text-4xl font-extrabold mt-1">{fmt(totalMine, 0)} kg</div>
           <div className="text-xs opacity-45 mt-1">{mine.length} pesée(s)</div>
@@ -1687,7 +1687,7 @@ function MoissonDriverModule({ chantiers, setChantiers, parcelles, driverName, o
           </ActionButton>
         </Card>
 
-        <Card className="p-5 bg-[#1C2B1E] text-white text-center">
+        <Card className="p-5 !bg-[#1C2B1E] text-white text-center">
           <div className="text-sm opacity-60">Mon total aujourd'hui</div>
           <div className="text-4xl font-extrabold mt-1">{fmt(totalMine, 0)} kg</div>
           <div className="text-xs opacity-45 mt-1">{mine.length} pesée(s)</div>
@@ -1880,7 +1880,7 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
           <ActionButton tone="driver" onClick={valider} disabled={!nombre}>{confirm ? "✓ Enregistré !" : "Valider"}</ActionButton>
         </Card>
 
-        <Card className="p-5 bg-[#1C2B1E] text-white text-center">
+        <Card className="p-5 !bg-[#1C2B1E] text-white text-center">
           <div className="text-sm opacity-60">Mon total aujourd'hui</div>
           <div className="text-4xl font-extrabold mt-1">{totalMine} bottes</div>
         </Card>
@@ -2169,7 +2169,7 @@ function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factu
           <div className="font-extrabold text-sm text-[#1C2B1E]/50">Nouvelle facture</div>
           <BigInput value={client} onChange={(e) => setClient(e.target.value)} placeholder="Nom du client" className="text-base text-left" />
           {lignes.map((l) => (
-            <Card key={l.id} className="p-3 space-y-2 bg-[#F5F0E6]/50">
+            <Card key={l.id} className="p-3 space-y-2 !bg-[#F5F0E6]/50">
               <BigInput value={l.designation} onChange={(e) => updateLigne(l.id, { designation: e.target.value })} placeholder="Désignation" className="text-sm text-left py-2.5" />
               <select value={l.lieAuStock} onChange={(e) => { const src = sources.find((s) => s.key === e.target.value); updateLigne(l.id, { lieAuStock: e.target.value, designation: e.target.value ? (l.designation || src.label) : l.designation }); }}
                 className="w-full px-3 py-2.5 rounded-xl border-2 border-[#1C2B1E]/10 bg-white text-sm font-semibold">
@@ -2186,7 +2186,7 @@ function FacturationModule({ stockPaille, setStockPaille, phyto, setPhyto, factu
             </Card>
           ))}
           <button className="block w-full text-center text-sm font-bold text-[#4A7C3F] py-2" onClick={() => setLignes((ls) => [...ls, emptyLigne()])}>+ Ajouter une ligne</button>
-          <Card className="p-4 bg-[#1C2B1E] text-white">
+          <Card className="p-4 !bg-[#1C2B1E] text-white">
             <div className="flex justify-between font-extrabold text-lg"><span>TOTAL TTC</span><span>{fmt(totaux.ttc, 2)} €</span></div>
           </Card>
           <ActionButton tone="admin" onClick={creerFacture} disabled={!client.trim() || lignes.every((l) => !l.designation)}>Créer la facture</ActionButton>
