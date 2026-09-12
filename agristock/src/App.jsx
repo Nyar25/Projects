@@ -12,6 +12,7 @@ const fmt = (n, d = 0) =>
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const yearOf = (iso) => (iso || todayISO()).slice(0, 4);
 const monthOf = (iso) => (iso || todayISO()).slice(0, 7);
+const diffDaysISO = (fromIso, toIso) => Math.max(1, Math.round((new Date(`${toIso}T00:00:00`) - new Date(`${fromIso}T00:00:00`)) / 86400000));
 const MOIS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 function monthLabel(mk) {
   const [y, m] = mk.split("-");
@@ -1793,8 +1794,6 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
   const [typeBotte, setTypeBotte] = useState("Paille");
   const [avecParcelle, setAvecParcelle] = useState("non");
   const [openId, setOpenId] = useState(taches[0]?.id || null);
-  const [closing, setClosing] = useState(false);
-  const [bottesUtilisees, setBottesUtilisees] = useState("");
 
   const tache = taches.find((t) => t.id === openId);
   const stockTotal = stock.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
@@ -1808,14 +1807,10 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
   }
   function closeTache() {
     const totalFait = tache.entrees.reduce((s, e) => s + e.nombre, 0);
-    const used = parseFloat(bottesUtilisees) || 0;
     setStock((s) => ({ ...s, mouvements: [...s.mouvements,
       { id: uid(), date: todayISO(), type: "entrée", quantite: totalFait, typeBotte: tache.typeBotte, libelle: `Production — ${tache.nom}` },
-      ...(used > 0 ? [{ id: uid(), date: todayISO(), type: "sortie", quantite: used, typeBotte: tache.typeBotte, libelle: `Consommation — ${tache.nom}` }] : []),
     ]}));
     setTaches((ts) => ts.map((x) => (x.id === tache.id ? { ...x, statut: "fermé" } : x)));
-    setClosing(false);
-    setBottesUtilisees("");
   }
 
   function exportPdf(t) {
@@ -1894,18 +1889,10 @@ function PressageAdminModule({ parcelles, taches, setTaches, stock, setStock, on
               <div className="flex justify-between font-extrabold text-xl mb-4">
                 <span>Total journée</span><span className="text-[#C97B3D]">{total} bottes</span>
               </div>
-              {!closing ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <ActionButton tone="ghost" size="md" onClick={() => exportPdf(tache)}>📄 Export PDF</ActionButton>
-                  {tache.statut === "ouvert" && <ActionButton tone="ghost" size="md" onClick={() => setClosing(true)}>Fermer</ActionButton>}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <BigInput type="number" value={bottesUtilisees} onChange={(e) => setBottesUtilisees(e.target.value)} placeholder="Bottes utilisées aujourd'hui" />
-                  <ActionButton tone="admin" onClick={closeTache}>Confirmer la fermeture</ActionButton>
-                  <button className="block w-full text-center text-sm font-bold text-[#1C2B1E]/40 py-1" onClick={() => setClosing(false)}>Annuler</button>
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-2">
+                <ActionButton tone="ghost" size="md" onClick={() => exportPdf(tache)}>📄 Export PDF</ActionButton>
+                {tache.statut === "ouvert" && <ActionButton tone="ghost" size="md" onClick={closeTache}>Fermer</ActionButton>}
+              </div>
             </Card>
           );
         })()}
@@ -1990,7 +1977,68 @@ function PressageDriverModule({ taches, setTaches, parcelles, driverName, onBack
 /* ============================================================
    MODULE: STOCK — récapitulatif ferme (moisson, bottes, ensilage)
    ============================================================ */
-function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, produitsStock, setProduitsStock, onBack, tone = "admin" }) {
+// Retrait de bottes (Pressage) : consommation quotidienne automatique + retrait manuel
+function PressageStockControls({ tone, stockPaille, setStockPaille }) {
+  const conso = stockPaille.consommation || {};
+  const [open, setOpen] = useState(null); // null | "conso" | "retrait"
+  const [pailleParJour, setPailleParJour] = useState(String(conso.Paille?.parJour || ""));
+  const [foinParJour, setFoinParJour] = useState(String(conso.Foin?.parJour || ""));
+  const [retraitType, setRetraitType] = useState("Paille");
+  const [retraitQuantite, setRetraitQuantite] = useState("");
+
+  function enregistrerConso() {
+    setStockPaille((s) => ({
+      ...s,
+      consommation: {
+        Paille: { parJour: parseFloat(pailleParJour) || 0, derniereDate: todayISO() },
+        Foin: { parJour: parseFloat(foinParJour) || 0, derniereDate: todayISO() },
+      },
+    }));
+    setOpen(null);
+  }
+
+  function confirmerRetrait() {
+    const q = parseFloat(retraitQuantite);
+    if (!q || q <= 0) return;
+    setStockPaille((s) => ({ ...s, mouvements: [...s.mouvements, { id: uid(), date: todayISO(), type: "sortie", quantite: q, typeBotte: retraitType, libelle: "Retrait manuel" }] }));
+    setRetraitQuantite("");
+    setOpen(null);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <ActionButton tone="ghost" size="md" onClick={() => setOpen(open === "conso" ? null : "conso")}>📆 Conso / jour</ActionButton>
+        <ActionButton tone="ghost" size="md" onClick={() => setOpen(open === "retrait" ? null : "retrait")}>➖ Retirer des bottes</ActionButton>
+      </div>
+
+      {open === "conso" && (
+        <div className="space-y-3 pt-2 border-t border-[#1C2B1E]/8">
+          <p className="text-xs text-[#1C2B1E]/45">Ce nombre de bottes est retiré automatiquement du stock chaque jour.</p>
+          <div>
+            <div className="text-sm font-bold mb-1">Paille — bottes/jour</div>
+            <BigInput type="number" inputMode="decimal" value={pailleParJour} onChange={(e) => setPailleParJour(e.target.value)} placeholder="0" className="text-base" />
+          </div>
+          <div>
+            <div className="text-sm font-bold mb-1">Foin — bottes/jour</div>
+            <BigInput type="number" inputMode="decimal" value={foinParJour} onChange={(e) => setFoinParJour(e.target.value)} placeholder="0" className="text-base" />
+          </div>
+          <ActionButton tone={tone} onClick={enregistrerConso}>Enregistrer</ActionButton>
+        </div>
+      )}
+
+      {open === "retrait" && (
+        <div className="space-y-3 pt-2 border-t border-[#1C2B1E]/8">
+          <PillChoice tone={tone} columns={2} value={retraitType} onChange={setRetraitType} options={[{ value: "Paille", label: "Paille" }, { value: "Foin", label: "Foin" }]} />
+          <BigInput type="number" inputMode="numeric" value={retraitQuantite} onChange={(e) => setRetraitQuantite(e.target.value)} placeholder="Nombre de bottes" className="text-base" />
+          <ActionButton tone={tone} onClick={confirmerRetrait} disabled={!retraitQuantite}>Retirer du stock</ActionButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, setStockPaille, produitsStock, setProduitsStock, onBack, tone = "admin" }) {
   const parProduit = useMemo(() => {
     const byProduit = {};
     produitsStock.mouvements.forEach((m) => {
@@ -2058,6 +2106,7 @@ function StockModule({ moissonChantiers, ensilageChantiers, stockPaille, produit
             <BigStat label="Paille" value={`${fmt(totalPaille, 0)} bottes`} tone={tone} />
             <BigStat label="Foin" value={`${fmt(totalFoin, 0)} bottes`} tone={tone} />
           </div>
+          {tone === "admin" && <PressageStockControls tone={tone} stockPaille={stockPaille} setStockPaille={setStockPaille} />}
         </Card>
 
         <Card className="p-5 space-y-3">
@@ -2314,6 +2363,28 @@ function StockAnnuelView({ title, unite, mouvements, soldeActuel, seuilAlerte, r
    MODULE: FACTURATION (lignes simplifiées, TVA par défaut 20%)
    ============================================================ */
 const TVA_TAUX = [{ l: "20%", v: 0.2 }, { l: "10%", v: 0.1 }, { l: "5,5%", v: 0.055 }, { l: "0%", v: 0 }];
+
+// Retire automatiquement du stock la consommation quotidienne réglée (Paille / Foin),
+// en rattrapant les jours écoulés depuis le dernier passage si l'appli est restée fermée.
+function applyConsommationJournaliere(stock) {
+  const todayStr = todayISO();
+  const consommation = stock.consommation || {};
+  const nouvelleConso = { ...consommation };
+  const nouveauxMouvements = [];
+  ["Paille", "Foin"].forEach((type) => {
+    const conf = consommation[type];
+    if (!conf || !conf.parJour) return;
+    if (conf.derniereDate === todayStr) return;
+    const jours = conf.derniereDate ? diffDaysISO(conf.derniereDate, todayStr) : 1;
+    nouveauxMouvements.push({
+      id: uid(), date: todayStr, type: "sortie", quantite: conf.parJour * jours, typeBotte: type,
+      libelle: jours > 1 ? `Consommation journalière (${jours} j)` : "Consommation journalière",
+    });
+    nouvelleConso[type] = { ...conf, derniereDate: todayStr };
+  });
+  if (nouveauxMouvements.length === 0) return stock;
+  return { ...stock, mouvements: [...stock.mouvements, ...nouveauxMouvements], consommation: nouvelleConso };
+}
 
 function stockSources(stockPaille) {
   const pailleTotal = stockPaille.mouvements.reduce((s, m) => s + (m.type === "entrée" ? m.quantite : -m.quantite), 0);
@@ -2666,7 +2737,7 @@ export default function App() {
   const [epandageChantiers, setEpandageChantiers] = useState([]);
   const [moissonChantiers, setMoissonChantiers] = useState([]);
   const [pressageTaches, setPressageTaches] = useState([]);
-  const [stockPaille, setStockPaille] = useState({ seuilAlerte: 500, mouvements: [] });
+  const [stockPaille, setStockPaille] = useState({ seuilAlerte: 500, mouvements: [], consommation: {} });
   const [produitsStock, setProduitsStock] = useState({ mouvements: [] });
   const [inventaires, setInventaires] = useState([]);
   const [factures, setFactures] = useState([]);
@@ -2679,6 +2750,12 @@ export default function App() {
     document.getElementById("root")?.scrollTo({ top: 0 });
     window.scrollTo({ top: 0 });
   }, [screen, adminModule, driverModule]);
+
+  useEffect(() => {
+    setStockPaille((s) => applyConsommationJournaliere(s));
+    const id = setInterval(() => setStockPaille((s) => applyConsommationJournaliere(s)), 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   function handleCreateAccount(acc) {
     setAccounts((a) => {
@@ -2734,7 +2811,7 @@ export default function App() {
     if (adminModule === "epandage" && currentAccount?.pontBascule) return <EpandageAdminModule parcelles={parcelles} chantiers={epandageChantiers} setChantiers={setEpandageChantiers} onBack={back} />;
     if (adminModule === "moisson") return <MoissonAdminModule parcelles={parcelles} chantiers={moissonChantiers} setChantiers={setMoissonChantiers} onBack={back} />;
     if (adminModule === "pressage") return <PressageAdminModule parcelles={parcelles} taches={pressageTaches} setTaches={setPressageTaches} stock={stockPaille} setStock={setStockPaille} onBack={back} />;
-    if (adminModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="admin" />;
+    if (adminModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} setStockPaille={setStockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="admin" />;
     if (adminModule === "inventaire") return <InventaireModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} inventaires={inventaires} setInventaires={setInventaires} onBack={back} />;
     if (adminModule === "facturation") return <FacturationModule stockPaille={stockPaille} setStockPaille={setStockPaille} factures={factures} setFactures={setFactures} onBack={back} />;
     if (adminModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly={false} onBack={back} tone="admin" />;
@@ -2748,7 +2825,7 @@ export default function App() {
     if (driverModule === "epandage" && currentAccount?.pontBascule) return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "moisson") return <MoissonDriverModule chantiers={moissonChantiers} setChantiers={setMoissonChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "pressage") return <PressageDriverModule taches={pressageTaches} setTaches={setPressageTaches} parcelles={parcelles} driverName={driverName} onBack={back} />;
-    if (driverModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="driver" />;
+    if (driverModule === "stock") return <StockModule moissonChantiers={moissonChantiers} ensilageChantiers={ensilageChantiers} stockPaille={stockPaille} setStockPaille={setStockPaille} produitsStock={produitsStock} setProduitsStock={setProduitsStock} onBack={back} tone="driver" />;
     if (driverModule === "stocks") return <DriverStocksView driverName={driverName} parcelles={parcelles} ensilageChantiers={ensilageChantiers} epandageChantiers={epandageChantiers} moissonChantiers={moissonChantiers} pressageTaches={pressageTaches} stockPaille={stockPaille} onBack={back} />;
     if (driverModule === "infos") return <InfosModule infos={infos} setInfos={setInfos} readOnly onBack={back} tone="driver" />;
   }
