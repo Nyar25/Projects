@@ -550,7 +550,7 @@ const ADMIN_MODULES = [
   { id: "infos", label: "Infos & cours", emoji: "📊" },
 ];
 
-function AdminHome({ onOpen, onLogout }) {
+function AdminHome({ onOpen, onLogout, onSwitchRole }) {
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6]">
       <div className="bg-gradient-to-b from-[#D28E51] to-[#C97B3D] text-white px-5 pt-6 pb-7 flex items-center justify-between shadow-md">
@@ -558,9 +558,21 @@ function AdminHome({ onOpen, onLogout }) {
           <AgristockMark size={36} tone="admin" />
           <span className="font-extrabold text-lg">Administrateur</span>
         </div>
-        <button onClick={onLogout} className="text-sm font-bold bg-white/15 px-3 py-2 rounded-xl active:bg-white/25 hover:bg-white/20 transition-colors">
-          Quitter
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onSwitchRole}
+            title="Changer de rôle"
+            aria-label="Changer de rôle"
+            className="w-9 h-9 rounded-full bg-white/15 active:bg-white/25 hover:bg-white/20 transition-colors flex items-center justify-center flex-shrink-0"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+          </button>
+          <button onClick={onLogout} className="text-sm font-bold bg-white/15 px-3 py-2 rounded-xl active:bg-white/25 hover:bg-white/20 transition-colors">
+            Quitter
+          </button>
+        </div>
       </div>
       <div className="p-5 grid grid-cols-2 gap-4">
         {ADMIN_MODULES.map((m) => (
@@ -591,7 +603,7 @@ const DRIVER_MODULES = [
   { id: "infos", label: "Infos & cours", emoji: "ℹ️" },
 ];
 
-function DriverHome({ driverName, onOpen, onLogout }) {
+function DriverHome({ driverName, onOpen, onLogout, onSwitchRole }) {
   return (
     <div className="screen-in min-h-screen bg-[#F5F0E6]">
       <div className="bg-gradient-to-b from-[#2A3D2C] to-[#1C2B1E] text-white px-5 pt-6 pb-7 flex items-center justify-between shadow-md">
@@ -599,7 +611,19 @@ function DriverHome({ driverName, onOpen, onLogout }) {
           <AgristockMark size={36} tone="driver" />
           <span className="font-extrabold text-lg">{driverName}</span>
         </div>
-        <button onClick={onLogout} className="text-sm font-bold bg-white/15 px-3 py-2 rounded-xl active:bg-white/25 hover:bg-white/20 transition-colors">Quitter</button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onSwitchRole}
+            title="Changer de rôle"
+            aria-label="Changer de rôle"
+            className="w-9 h-9 rounded-full bg-white/15 active:bg-white/25 hover:bg-white/20 transition-colors flex items-center justify-center flex-shrink-0"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+          </button>
+          <button onClick={onLogout} className="text-sm font-bold bg-white/15 px-3 py-2 rounded-xl active:bg-white/25 hover:bg-white/20 transition-colors">Quitter</button>
+        </div>
       </div>
       <div className="p-5 grid grid-cols-2 gap-4">
         {DRIVER_MODULES.map((m) => (
@@ -2467,6 +2491,12 @@ export default function App() {
     setAdminModule(null);
     setScreen("login");
   }
+  function backToRoleSelect() {
+    setDriverName("");
+    setDriverModule(null);
+    setAdminModule(null);
+    setScreen("roleSelect");
+  }
 
   if (screen === "splash") return <SplashScreen onContinue={() => setScreen("login")} />;
 
@@ -2483,7 +2513,7 @@ export default function App() {
     );
 
   if (screen === "adminApp") {
-    if (!adminModule) return <AdminHome onOpen={setAdminModule} onLogout={logout} />;
+    if (!adminModule) return <AdminHome onOpen={setAdminModule} onLogout={logout} onSwitchRole={backToRoleSelect} />;
     const back = () => setAdminModule(null);
     if (adminModule === "parcelles") return <ParcellesModule parcelles={parcelles} setParcelles={setParcelles} onBack={back} />;
     if (adminModule === "ensilage") return <EnsilageAdminModule parcelles={parcelles} chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} onBack={back} />;
@@ -2496,7 +2526,7 @@ export default function App() {
   }
 
   if (screen === "driverApp") {
-    if (!driverModule) return <DriverHome driverName={driverName} onOpen={setDriverModule} onLogout={logout} />;
+    if (!driverModule) return <DriverHome driverName={driverName} onOpen={setDriverModule} onLogout={logout} onSwitchRole={backToRoleSelect} />;
     const back = () => setDriverModule(null);
     if (driverModule === "ensilage") return <EnsilageDriverModule chantiers={ensilageChantiers} setChantiers={setEnsilageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
     if (driverModule === "epandage") return <EpandageDriverModule chantiers={epandageChantiers} setChantiers={setEpandageChantiers} parcelles={parcelles} driverName={driverName} onBack={back} />;
