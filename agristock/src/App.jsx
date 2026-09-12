@@ -306,6 +306,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
   const [farmName, setFarmName] = useState("");
   const [newAdminCode, setNewAdminCode] = useState("");
   const [origine, setOrigine] = useState("");
+  const [pontBascule, setPontBascule] = useState(""); // "oui" | "non"
   const [verifie, setVerifie] = useState(false);
 
   function handleLogin() {
@@ -324,6 +325,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
   const codeValide = newAdminCode.length === 4;
   const farmValide = farmName.trim().length > 0;
   const origineValide = origine !== "";
+  const pontBasculeValide = pontBascule !== "";
   const emailDejaPris = accounts.some((a) => a.email === newEmail.trim().toLowerCase());
 
   function verifierInformations() {
@@ -333,6 +335,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
     if (!passwordValide) { setError("Le mot de passe doit faire au moins 4 caractères."); setVerifie(false); return; }
     if (!codeValide) { setError("Le code administrateur doit faire 4 chiffres."); setVerifie(false); return; }
     if (!origineValide) { setError("Indiquez comment vous avez connu Agristock."); setVerifie(false); return; }
+    if (!pontBasculeValide) { setError("Indiquez si vous disposez d'un pont bascule."); setVerifie(false); return; }
     setError("");
     setVerifie(true);
   }
@@ -343,7 +346,7 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
       return;
     }
     setError("");
-    const acc = { email: newEmail.trim().toLowerCase(), password: newPassword, farmName: farmName.trim(), adminCode: newAdminCode, origine };
+    const acc = { email: newEmail.trim().toLowerCase(), password: newPassword, farmName: farmName.trim(), adminCode: newAdminCode, origine, pontBascule: pontBascule === "oui" };
     onCreateAccount(acc);
     onLogin(acc);
   }
@@ -427,6 +430,17 @@ function LoginScreen({ accounts, onLogin, onCreateAccount }) {
                   {ORIGINES_INSCRIPTION.map((o) => <option key={o} value={o}>{o}</option>)}
                 </select>
                 {origine && <p className="text-xs font-bold text-[#4A7C3F] mt-1 px-1">✓ Merci !</p>}
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-[#1C2B1E]/60 mb-2 px-1 text-left">Disposez-vous d'un pont bascule ?</p>
+                <PillChoice
+                  tone="field"
+                  columns={2}
+                  value={pontBascule}
+                  onChange={(v) => { setPontBascule(v); setVerifie(false); }}
+                  options={[{ value: "oui", label: "Oui" }, { value: "non", label: "Non" }]}
+                />
               </div>
 
               {error && <p className="text-sm text-[#D6483A] font-bold text-center">{error}</p>}
